@@ -240,12 +240,20 @@ def products_view(page: ft.Page, app_state: dict):
     def open_product_dialog(product: dict = None):
         is_edit = product is not None
 
+        # Anchos fijos para que las filas con 2/3 campos quepan dentro del
+        # Container(width=500) del diálogo (expand=True dentro de un Column
+        # con scroll provoca que los campos colapsen).
+        HALF_W  = 235   # 2 campos por fila: 235*2 + spacing(10) = 480
+        THIRD_W = 153   # 3 campos por fila: 153*3 + spacing(10*2) = 479
+
         f_code  = ft.TextField(label="Código / Barcode *",
                                value=product.get("code", "") if is_edit else "",
-                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY)
+                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+                               width=HALF_W)
         f_name  = ft.TextField(label="Nombre *",
                                value=product.get("name", "") if is_edit else "",
-                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY)
+                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+                               width=HALF_W)
         f_desc  = ft.TextField(label="Descripción",
                                value=product.get("description", "") if is_edit else "",
                                multiline=True, min_lines=2, max_lines=3,
@@ -253,19 +261,23 @@ def products_view(page: ft.Page, app_state: dict):
         f_price = ft.TextField(label="Precio venta *",
                                value=str(product.get("price", "0")) if is_edit else "",
                                prefix_text=currency, keyboard_type=ft.KeyboardType.NUMBER,
-                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY)
+                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+                               width=HALF_W)
         f_cost  = ft.TextField(label="Precio costo",
                                value=str(product.get("cost", "0")) if is_edit else "",
                                prefix_text=currency, keyboard_type=ft.KeyboardType.NUMBER,
-                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY)
+                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+                               width=HALF_W)
         f_tax   = ft.TextField(label="Tasa IVA (0.16 = 16%)",
                                value=str(product.get("tax_rate", "0")) if is_edit else "0",
                                keyboard_type=ft.KeyboardType.NUMBER,
-                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY)
+                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+                               width=HALF_W)
         f_disc  = ft.TextField(label="Descuento máx (%)",
                                value=str(product.get("discount_max", "0")) if is_edit else "0",
                                keyboard_type=ft.KeyboardType.NUMBER,
-                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY)
+                               color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+                               width=HALF_W)
         f_cat   = ft.Dropdown(
             label="Categoría",
             value=str(product.get("category_id", "0")) if is_edit and product.get("category_id") else "0",
@@ -278,15 +290,15 @@ def products_view(page: ft.Page, app_state: dict):
         f_stock = ft.TextField(label="Stock inicial", value="0",
                                keyboard_type=ft.KeyboardType.NUMBER,
                                color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
-                               visible=not is_edit)
+                               visible=not is_edit, width=THIRD_W)
         f_min_s = ft.TextField(label="Stock mínimo", value="5",
                                keyboard_type=ft.KeyboardType.NUMBER,
                                color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
-                               visible=not is_edit)
+                               visible=not is_edit, width=THIRD_W)
         f_max_s = ft.TextField(label="Stock máximo", value="100",
                                keyboard_type=ft.KeyboardType.NUMBER,
                                color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
-                               visible=not is_edit)
+                               visible=not is_edit, width=THIRD_W)
         err_text = ft.Text("", color=ERROR, size=12)
 
         def save(e):

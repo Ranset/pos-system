@@ -5,7 +5,8 @@
       "Bash(python -m py_compile app/routers/sales.py)",
       "Bash(python -m py_compile frontend/views/cash.py)",
       "Bash(python -m py_compile frontend/views/pos.py)",
-      "Bash(python -m py_compile frontend/services/printer.py frontend/views/pos.py frontend/views/cash.py)"
+      "Bash(python -m py_compile frontend/services/printer.py frontend/views/pos.py frontend/views/cash.py)",
+      "Bash(python -m py_compile frontend/views/products.py)"
     ]
   }
 }
