@@ -5,7 +5,7 @@ import flet as ft
 from datetime import datetime, timezone
 from views.pos import _fmt_dt   # reutilizar el helper de conversión UTC→local
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
-from services import api, APIError, printer
+from services import api, APIError
 
 
 def cash_view(page: ft.Page, app_state: dict):
@@ -818,15 +818,25 @@ def cash_view(page: ft.Page, app_state: dict):
                     "reason": f_reason.value.strip(),
                 })
                 dlg.open = False; page.update()
-                # Abrir cajón: el movimiento justifica su apertura
+                # Abrir cajón: el movimiento justifica su apertura.
+                # Usar una instancia con la configuración real (la global
+                # `printer` se crea con config vacía y nunca se actualiza,
+                # por lo que enabled=False y solo simula la apertura).
+                drawer_msg = ""
                 try:
-                    printer.open_drawer()
-                except Exception:
-                    pass
+                    from services.printer import TicketPrinter
+                    tp = TicketPrinter(api.get_config_map())
+                    if tp.enabled:
+                        if tp.open_drawer():
+                            drawer_msg = " · Cajón abierto"
+                        else:
+                            drawer_msg = f" · ⚠ No se pudo abrir el cajón: {tp.last_error}"
+                except Exception as ex:
+                    drawer_msg = f" · ⚠ No se pudo abrir el cajón: {ex}"
                 tipo = "Entrada" if f_type.value == "income" else "Salida"
                 _show_snack(
-                    f"✅ {tipo} de {currency}{float(f_amount.value):.2f} registrada · "
-                    "Cajón abierto"
+                    f"✅ {tipo} de {currency}{float(f_amount.value):.2f} registrada"
+                    f"{drawer_msg}"
                 )
                 load_data()
             except APIError as ex:
