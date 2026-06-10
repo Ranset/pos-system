@@ -65,7 +65,7 @@ There is no Alembic migration chain in active use despite it being a dependency.
 - `config.py` — UI color constants, app title/version, `API_BASE_URL` (from `.env`).
 - `services/api.py` — `APIClient`, the single HTTP client (httpx) wrapping every backend endpoint; holds the auth token and `current_user`. All view code goes through the shared `api` instance imported from `services`. Raises `APIError` (with `status_code`) on non-2xx responses.
 - `services/printer.py` — ESC/POS thermal printer + cash drawer integration (USB or network/TCP).
-- `views/` — one module per nav section: `login`, `pos` (sales screen), `products`, `inventory`, `users`, `cash`, `reports`, `settings`. Each view builder takes `(page, app_state)`.
+- `views/` — one module per nav section: `login`, `pos` (sales screen), `products`, `inventory`, `users`, `cash`, `sales` (monthly sales summary, manager/admin only), `reports`, `settings`. Each view builder takes `(page, app_state)`.
 - `components/nav_rail.py` — left navigation rail, built per-role (visibility driven by `api.is_admin()` / `api.is_manager()`).
 
 ### Session/role conventions

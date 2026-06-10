@@ -15,7 +15,7 @@ from services import api, APIError
 from views import (
     login_view, pos_view, products_view,
     inventory_view, users_view, cash_view,
-    reports_view, settings_view,
+    sales_view, reports_view, settings_view,
 )
 from components import build_nav_rail
 
@@ -28,6 +28,7 @@ VIEW_INVENTORY   = 3
 VIEW_USERS       = 4
 VIEW_REPORTS     = 5
 VIEW_SETTINGS    = 6
+VIEW_SALES       = 7
 
 
 def main(page: ft.Page):
@@ -151,6 +152,7 @@ def main(page: ft.Page):
         VIEW_USERS:     lambda: users_view(page, app_state),
         VIEW_REPORTS:   lambda: reports_view(page, app_state),
         VIEW_SETTINGS:  lambda: settings_view(page, app_state),
+        VIEW_SALES:     lambda: sales_view(page, app_state),
     }
 
     def navigate_to(index: int):
@@ -250,6 +252,7 @@ def main(page: ft.Page):
             key_map = {
                 "1": VIEW_POS, "2": VIEW_CASH, "3": VIEW_PRODUCTS,
                 "4": VIEW_INVENTORY, "5": VIEW_USERS, "6": VIEW_REPORTS, "7": VIEW_SETTINGS,
+                "8": VIEW_SALES,
             }
             if e.key in key_map:
                 navigate_to(key_map[e.key])

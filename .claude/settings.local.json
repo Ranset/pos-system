@@ -6,7 +6,10 @@
       "Bash(python -m py_compile frontend/views/cash.py)",
       "Bash(python -m py_compile frontend/views/pos.py)",
       "Bash(python -m py_compile frontend/services/printer.py frontend/views/pos.py frontend/views/cash.py)",
-      "Bash(python -m py_compile frontend/views/products.py)"
+      "Bash(python -m py_compile frontend/views/products.py)",
+      "Bash(python -m py_compile frontend/views/sales.py frontend/views/__init__.py frontend/main.py frontend/components/nav_rail.py)",
+      "Bash(grep -n \"views/\\\\` — one module per nav section\" \"C:\\\\_Almacen\\\\Develop\\\\pos-system\\\\CLAUDE.md\")",
+      "Bash(python -m py_compile frontend/views/sales.py)"
     ]
   }
 }

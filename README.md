@@ -107,6 +107,7 @@ flet run --web --port 8080 main.py
 | Cancelar ventas             | ❌     | ✅      | ✅    |
 | Movimientos de caja         | ❌     | ✅      | ✅    |
 | Ver reportes                | ❌     | ✅      | ✅    |
+| Ver resumen de ventas       | ❌     | ✅      | ✅    |
 | Gestionar usuarios          | ❌     | ❌      | ✅    |
 | Configuración del sistema   | ❌     | ❌      | ✅    |
 
@@ -123,6 +124,7 @@ flet run --web --port 8080 main.py
 | `Ctrl+5`  | Usuarios       |
 | `Ctrl+6`  | Reportes       |
 | `Ctrl+7`  | Configuración  |
+| `Ctrl+8`  | Ventas         |
 
 ---
 
