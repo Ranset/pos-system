@@ -204,6 +204,7 @@ def products_view(page: ft.Page, app_state: dict):
                                 icon_size=18, on_click=make_stock(p),
                                 tooltip="Ajustar stock",
                                 disabled=not is_manager or not is_active,
+                                visible= False
                             ),
                             ft.IconButton(
                                 ft.icons.TOGGLE_ON if is_active else ft.icons.TOGGLE_OFF,

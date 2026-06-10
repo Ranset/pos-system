@@ -658,14 +658,14 @@ def cash_view(page: ft.Page, app_state: dict):
                             # Billetes
                             ft.Container(
                                 expand=True,
-                                bgcolor=ft.colors.AMBER_900 + "44", border_radius=6,
+                                bgcolor=ft.colors.BLUE_GREY_900, border_radius=6,
                                 padding=ft.padding.all(8),
                                 content=ft.Column(spacing=6, controls=[
                                     ft.Row([
                                         ft.Icon(ft.icons.ATTACH_MONEY,
-                                                color=ft.colors.AMBER_400, size=14),
+                                                color=ft.colors.BLUE_GREY_400, size=14),
                                         ft.Text("BILLETES", size=10,
-                                                color=ft.colors.AMBER_300,
+                                                color=ft.colors.BLUE_GREY_300,
                                                 weight=ft.FontWeight.BOLD),
                                     ], spacing=4),
                                     *bill_rows,

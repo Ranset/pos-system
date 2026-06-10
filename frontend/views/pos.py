@@ -566,7 +566,7 @@ def pos_view(page: ft.Page, app_state: dict):
             if state["mode"] != "pos":        # ya en cobro o éxito → ignorar
                 return
             if not cart:
-                _snack("El carrito está vacío", WARNING)
+            #     _snack("El carrito está vacío", WARNING)
                 return
             session_id = app_state.get("session_id")
             if cfg.get("pos.require_session","true") == "true" and not session_id:
@@ -696,6 +696,7 @@ def pos_view(page: ft.Page, app_state: dict):
                                 on_click=make_cancel(sale) if is_done and is_mgr else None,
                                 tooltip="Cancelar venta" if is_mgr else "Solo gerentes pueden cancelar",
                                 disabled=not is_done or not is_mgr,
+                                visible=False
                             ),
                         ]),
                     ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
