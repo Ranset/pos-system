@@ -902,9 +902,22 @@ def pos_view(page: ft.Page, app_state: dict):
                         cash_dev  = float(r.get("cash_returned", 0))
                         load_sales()
                         medio = "efectivo" if is_cash else "tarjeta/transferencia"
+                        drawer_msg = ""
+                        # Abrir cajón si la devolución entrega efectivo físico
+                        if is_cash and cash_dev > 0:
+                            try:
+                                from services.printer import TicketPrinter
+                                tp = TicketPrinter(api.get_config_map())
+                                if tp.enabled:
+                                    if tp.open_drawer():
+                                        drawer_msg = " · Cajón abierto"
+                                    else:
+                                        drawer_msg = f" · ⚠ No se pudo abrir el cajón: {tp.last_error}"
+                            except Exception as ex:
+                                drawer_msg = f" · ⚠ No se pudo abrir el cajón: {ex}"
                         _snack(
                             f"✅ Devolución {folio}: {currency}{total_dev:.2f} en {medio} · "
-                            f"Aprobado por {sup_name}"
+                            f"Aprobado por {sup_name}{drawer_msg}"
                         )
                     except APIError as ex:
                         _snack(str(ex), ERROR)
