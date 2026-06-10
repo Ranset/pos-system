@@ -908,7 +908,7 @@ def pos_view(page: ft.Page, app_state: dict):
                             try:
                                 from services.printer import TicketPrinter
                                 tp = TicketPrinter(api.get_config_map())
-                                if tp.enabled:
+                                if tp.enabled and tp.open_drawer_enabled:
                                     if tp.open_drawer():
                                         drawer_msg = " · Cajón abierto"
                                     else:

@@ -450,6 +450,9 @@ class TicketPrinter:
 
     def open_drawer(self, printer=None) -> bool:
         """Envía el pulso ESC/POS para abrir el cajón de dinero."""
+        if not self.open_drawer_enabled:
+            self.last_error = "Apertura automática de cajón deshabilitada"
+            return False
         if not self.enabled:
             print("[Drawer] Cajón abierto (simulado)")
             return True
