@@ -134,6 +134,9 @@ class APIClient:
     def get_low_stock(self):
         return self.get("/products/inventory/low-stock")
 
+    def get_inventory_movements(self, product_id: int, limit: int = 100):
+        return self.get(f"/products/{product_id}/inventory/movements", params={"limit": limit})
+
     def get_categories(self):
         return self.get("/categories/")
 

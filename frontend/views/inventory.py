@@ -1,9 +1,27 @@
 """
 Vista de Inventario – Control de stock y movimientos
 """
+from datetime import datetime
 import flet as ft
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+
+
+MOVEMENT_LABELS = {
+    "in":         ("Entrada", SUCCESS, ft.icons.ARROW_DOWNWARD),
+    "out":        ("Salida", ERROR, ft.icons.ARROW_UPWARD),
+    "adjustment": ("Ajuste", WARNING, ft.icons.SYNC_ALT),
+}
+
+
+def _format_datetime(value: str) -> str:
+    if not value:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return value
 
 
 def inventory_view(page: ft.Page, app_state: dict):
@@ -30,6 +48,7 @@ def inventory_view(page: ft.Page, app_state: dict):
             ft.DataColumn(ft.Text("Mín",          color=ft.colors.WHITE70, size=12), numeric=True),
             ft.DataColumn(ft.Text("Máx",          color=ft.colors.WHITE70, size=12), numeric=True),
             ft.DataColumn(ft.Text("Estado",       color=ft.colors.WHITE70, size=12)),
+            ft.DataColumn(ft.Text("Historial",    color=ft.colors.WHITE70, size=12)),
             ft.DataColumn(ft.Text("Ajustar",      color=ft.colors.WHITE70, size=12)),
         ],
         rows=[],
@@ -95,6 +114,7 @@ def inventory_view(page: ft.Page, app_state: dict):
             stock_color = ERROR if stock <= 0 else WARNING if stock <= min_s else SUCCESS
 
             def make_adj(prod): return lambda _: open_adjust_dialog(prod)
+            def make_hist(prod): return lambda _: open_history_dialog(prod)
 
             inv_table.rows.append(ft.DataRow(cells=[
                 ft.DataCell(ft.Text(p.get("code", ""), size=12,
@@ -110,6 +130,10 @@ def inventory_view(page: ft.Page, app_state: dict):
                     content=ft.Text(status_label, size=11, color=ft.colors.WHITE),
                     bgcolor=status_bg, border_radius=4,
                     padding=ft.padding.symmetric(3, 8),
+                )),
+                ft.DataCell(ft.IconButton(
+                    ft.icons.HISTORY, icon_color=PRIMARY_LT, icon_size=20,
+                    on_click=make_hist(p), tooltip="Historial de movimientos",
                 )),
                 ft.DataCell(ft.IconButton(
                     ft.icons.TUNE, icon_color=PRIMARY_LT, icon_size=20,
@@ -227,6 +251,83 @@ def inventory_view(page: ft.Page, app_state: dict):
         )
         page.dialog = dlg
         dlg.open = True
+        page.update()
+
+    # ── Diálogo historial de movimientos ──────────────────────────────────────
+
+    def open_history_dialog(product: dict):
+        history_list = ft.ListView(spacing=6, padding=4, height=400)
+        loading = ft.Row([ft.ProgressRing(width=18, height=18, color=PRIMARY), ft.Text("Cargando...", color=ft.colors.WHITE54)], spacing=10)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Historial de movimientos – {product.get('name', '')}"),
+            content=ft.Container(width=560, content=ft.Column([loading, history_list], tight=True, spacing=10)),
+            actions=[
+                ft.TextButton("Cerrar",
+                              on_click=lambda _: setattr(dlg, "open", False) or page.update()),
+            ],
+        )
+        page.dialog = dlg
+        dlg.open = True
+        page.update()
+
+        try:
+            movements = api.get_inventory_movements(product["id"])
+        except APIError as ex:
+            loading.controls = [ft.Text(str(ex), color=ERROR, size=13)]
+            page.update()
+            return
+
+        loading.controls = []
+        if not movements:
+            history_list.controls.append(
+                ft.Container(
+                    alignment=ft.alignment.center,
+                    padding=20,
+                    content=ft.Text("Sin movimientos registrados", color=ft.colors.WHITE54),
+                )
+            )
+        for m in movements:
+            mtype = m.get("movement_type", "adjustment")
+            label, color, icon = MOVEMENT_LABELS.get(mtype, ("Movimiento", PRIMARY_LT, ft.icons.SWAP_VERT))
+            qty   = float(m.get("quantity", 0))
+            prev  = float(m.get("previous_quantity", 0))
+            new   = float(m.get("new_quantity", 0))
+            reason = m.get("reason") or "Sin motivo especificado"
+            user_name = m.get("user_name")
+
+            causa = reason
+            if user_name and mtype == "adjustment":
+                causa = f"{reason} (por {user_name})"
+            elif user_name and not (m.get("reference_id")):
+                causa = f"{reason} (por {user_name})"
+
+            history_list.controls.append(ft.Container(
+                bgcolor=BG_SURFACE, border_radius=8,
+                padding=ft.padding.symmetric(horizontal=14, vertical=10),
+                border=ft.border.all(1, ft.colors.WHITE12),
+                content=ft.Row([
+                    ft.Icon(icon, color=color, size=18),
+                    ft.Column([
+                        ft.Text(causa, color=ft.colors.WHITE, size=13,
+                                weight=ft.FontWeight.W_500),
+                        ft.Text(
+                            f"{_format_datetime(m.get('created_at'))}  ·  "
+                            f"Stock: {prev:.2f} → {new:.2f}",
+                            color=ft.colors.WHITE54, size=11,
+                        ),
+                    ], spacing=2, expand=True),
+                    ft.Container(
+                        content=ft.Text(
+                            f"{'+' if mtype != 'out' else '-'}{qty:.2f}",
+                            color=color, size=13, weight=ft.FontWeight.BOLD,
+                        ),
+                        bgcolor=color + "22", border_radius=4,
+                        padding=ft.padding.symmetric(3, 8),
+                    ),
+                ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ))
         page.update()
 
     # ── Panel de alertas ──────────────────────────────────────────────────────

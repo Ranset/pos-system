@@ -157,6 +157,20 @@ class StockAdjustment(BaseModel):
     movement_type: str = "adjustment"  # "in", "out", "adjustment"
 
 
+class InventoryMovementOut(BaseModel):
+    id: int
+    movement_type: str
+    quantity: float
+    previous_quantity: float
+    new_quantity: float
+    reason: Optional[str] = None
+    reference_id: Optional[int] = None
+    created_at: datetime
+    user_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Cash Sessions
 # ─────────────────────────────────────────────────────────────────────────────

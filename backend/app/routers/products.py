@@ -6,6 +6,7 @@ from ..models import Product, Category, Inventory, InventoryMovement
 from ..schemas import (
     ProductOut, ProductCreate, ProductUpdate, CategoryOut,
     CategoryCreate, CategoryUpdate, StockAdjustment, InventoryOut,
+    InventoryMovementOut,
 )
 from ..services.auth import require_manager, require_cashier, get_current_user
 
@@ -185,6 +186,41 @@ def adjust_stock(
     db.add(movement)
     db.commit()
     return {"detail": "Stock actualizado", "new_quantity": inv.quantity}
+
+
+@router.get("/{product_id}/inventory/movements", response_model=List[InventoryMovementOut])
+def get_inventory_movements(
+    product_id: int,
+    limit: int = Query(100, le=500),
+    db: Session = Depends(get_db),
+    _=Depends(require_cashier),
+):
+    inv = db.query(Inventory).filter(Inventory.product_id == product_id).first()
+    if not inv:
+        raise HTTPException(404, "Inventario no encontrado")
+
+    movements = (
+        db.query(InventoryMovement)
+        .options(joinedload(InventoryMovement.user))
+        .filter(InventoryMovement.inventory_id == inv.id)
+        .order_by(InventoryMovement.created_at.desc(), InventoryMovement.id.desc())
+        .limit(limit)
+        .all()
+    )
+    result = []
+    for m in movements:
+        result.append(InventoryMovementOut(
+            id=m.id,
+            movement_type=m.movement_type,
+            quantity=m.quantity,
+            previous_quantity=m.previous_quantity,
+            new_quantity=m.new_quantity,
+            reason=m.reason,
+            reference_id=m.reference_id,
+            created_at=m.created_at,
+            user_name=m.user.full_name if m.user else None,
+        ))
+    return result
 
 
 @router.get("/inventory/low-stock")

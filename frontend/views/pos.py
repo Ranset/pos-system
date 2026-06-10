@@ -1238,6 +1238,7 @@ def pos_view(page: ft.Page, app_state: dict):
                 icon_color=PRIMARY_LT,
                 tooltip="Cambiar caja activa en POS",
                 on_click=lambda _: _open_session_selector(),
+                visible= False
             )
 
         left = ft.Container(
