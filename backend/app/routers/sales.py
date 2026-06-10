@@ -2,6 +2,7 @@ from typing import List, Optional
 from datetime import date
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
 from ..models import Sale, SaleItem, SaleStatus, PaymentMethod, Product, Inventory, InventoryMovement, CashSession
@@ -96,25 +97,38 @@ def create_sale(
     else:
         cash_tendered = Decimal("0")                 # tarjeta/transferencia: $0 físico
 
-    sale = Sale(
-        folio=_generate_folio(db),
-        session_id=data.session_id,
-        cashier_id=current.id,
-        customer_name=data.customer_name,
-        customer_tax_id=data.customer_tax_id,
-        subtotal=subtotal,
-        tax_amount=tax_total,
-        discount_amount=data.discount_amount,
-        total=total,
-        payment_method=data.payment_method,
-        payment_amount=data.payment_amount,
-        change_amount=max(change, Decimal("0")),
-        cash_tendered=cash_tendered,
-        status=SaleStatus.COMPLETED,
-        notes=data.notes,
-    )
-    db.add(sale)
-    db.flush()
+    # Reintentar generación de folio: con varias cajas concurrentes,
+    # dos ventas pueden calcular el mismo folio antes de hacer commit,
+    # provocando un choque con el índice único sales.ix_sales_folio.
+    max_retries = 5
+    for attempt in range(max_retries):
+        sale = Sale(
+            folio=_generate_folio(db),
+            session_id=data.session_id,
+            cashier_id=current.id,
+            customer_name=data.customer_name,
+            customer_tax_id=data.customer_tax_id,
+            subtotal=subtotal,
+            tax_amount=tax_total,
+            discount_amount=data.discount_amount,
+            total=total,
+            payment_method=data.payment_method,
+            payment_amount=data.payment_amount,
+            change_amount=max(change, Decimal("0")),
+            cash_tendered=cash_tendered,
+            status=SaleStatus.COMPLETED,
+            notes=data.notes,
+        )
+        db.add(sale)
+        try:
+            db.flush()
+            break
+        except IntegrityError:
+            db.rollback()
+            if attempt == max_retries - 1:
+                raise HTTPException(
+                    409, "No se pudo generar un folio único para la venta, intenta de nuevo"
+                )
 
     for si in sale_items:
         item = SaleItem(

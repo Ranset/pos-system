@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m py_compile services/printer.py views/pos.py views/cash.py)"
+      "Bash(python -m py_compile services/printer.py views/pos.py views/cash.py)",
+      "Bash(python -m py_compile app/routers/sales.py)"
     ]
   }
 }
