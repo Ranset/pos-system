@@ -9,7 +9,16 @@
       "Bash(python -m py_compile frontend/views/products.py)",
       "Bash(python -m py_compile frontend/views/sales.py frontend/views/__init__.py frontend/main.py frontend/components/nav_rail.py)",
       "Bash(grep -n \"views/\\\\` — one module per nav section\" \"C:\\\\_Almacen\\\\Develop\\\\pos-system\\\\CLAUDE.md\")",
-      "Bash(python -m py_compile frontend/views/sales.py)"
+      "Bash(python -m py_compile frontend/views/sales.py)",
+      "Bash(sed -n '1,80p' bar_chart.py)",
+      "Bash(sed -n '1,60p' bar_chart_rod.py)",
+      "Bash(sed -n '1,40p' bar_chart_group.py)",
+      "Bash(sed -n '1,40p' chart_axis.py)",
+      "Bash(sed -n '1,30p' chart_axis_label.py)",
+      "Bash(python -m py_compile backend/app/services/reports.py backend/app/routers/reports.py frontend/services/api.py)",
+      "Bash(python -m py_compile frontend/views/reports.py)",
+      "Bash(.posvenvScriptspython.exe -c ' *)",
+      "Bash(./.posvenv/Scripts/python.exe -c ' *)"
     ]
   }
 }

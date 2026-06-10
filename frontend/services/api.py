@@ -234,6 +234,12 @@ class APIClient:
     def get_range_report(self, start: str, end: str):
         return self.get("/reports/range", params={"start": start, "end": end})
 
+    def get_monthly_report(self, year: int):
+        return self.get("/reports/monthly", params={"year": year})
+
+    def get_period_report(self, start: str, end: str):
+        return self.get("/reports/period", params={"start": start, "end": end})
+
     def get_session_report(self, session_id: int):
         return self.get(f"/reports/session/{session_id}")
 

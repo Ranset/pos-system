@@ -3,9 +3,12 @@ Servicio de generación de reportes financieros
 """
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Date
-from ..models import Sale, SaleItem, SaleStatus, PaymentMethod, CashSession, CashMovement, SaleReturn
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, cast, Date, extract
+from ..models import (
+    Sale, SaleItem, SaleStatus, PaymentMethod, CashSession, CashMovement,
+    SaleReturn, Product, Category,
+)
 
 
 def get_daily_summary(db: Session, target_date: date) -> dict:
@@ -278,3 +281,118 @@ def get_range_summary(db: Session, start: date, end: date) -> list:
         results.append(get_daily_summary(db, current))
         current += timedelta(days=1)
     return results
+
+
+def get_yearly_summary(db: Session, year: int) -> list:
+    """Resumen de ventas agrupadas por mes para un año (para gráfica de barras)."""
+    rows = (
+        db.query(
+            extract("month", Sale.created_at).label("month"),
+            func.count(Sale.id).label("count"),
+            func.coalesce(func.sum(Sale.total), 0).label("total"),
+        )
+        .filter(
+            extract("year", Sale.created_at) == year,
+            func.lower(Sale.status).in_(["completed", "partial_return"]),
+        )
+        .group_by("month")
+        .all()
+    )
+    by_month = {int(r.month): (int(r.count), float(r.total or 0)) for r in rows}
+    return [
+        {
+            "month": m,
+            "total_sales": by_month.get(m, (0, 0.0))[0],
+            "total_revenue": by_month.get(m, (0, 0.0))[1],
+        }
+        for m in range(1, 13)
+    ]
+
+
+def get_period_summary(db: Session, start: date, end: date) -> dict:
+    """Resumen agregado de un rango de fechas: totales, top productos,
+    top categorías y distribución de ventas por hora."""
+    start_dt = datetime.combine(start, datetime.min.time())
+    end_dt = datetime.combine(end, datetime.max.time())
+
+    sales = (
+        db.query(Sale)
+        .options(joinedload(Sale.items))
+        .filter(Sale.created_at >= start_dt, Sale.created_at <= end_dt)
+        .all()
+    )
+
+    completed = [s for s in sales if (s.status or "").lower() in ("completed", "partial_return")]
+    cancelled = [s for s in sales if (s.status or "").lower() == "cancelled"]
+
+    total_revenue = sum(s.total for s in completed) or Decimal("0")
+    total_tax = sum(s.tax_amount for s in completed) or Decimal("0")
+    total_disc = sum(s.discount_amount for s in completed) or Decimal("0")
+    total_items_qty = sum(item.quantity for s in completed for item in s.items) or 0
+
+    cash = sum(s.total for s in completed if s.payment_method == PaymentMethod.CASH) or Decimal("0")
+    card = sum(s.total for s in completed if s.payment_method == PaymentMethod.CARD) or Decimal("0")
+    transfer = sum(s.total for s in completed if s.payment_method == PaymentMethod.TRANSFER) or Decimal("0")
+    mixed = sum(s.total for s in completed if s.payment_method == PaymentMethod.MIXED) or Decimal("0")
+
+    # Mapa producto → categoría (una sola consulta)
+    product_ids = {item.product_id for s in completed for item in s.items if item.product_id}
+    products_map = {}
+    if product_ids:
+        products_map = {
+            p.id: p
+            for p in db.query(Product)
+            .options(joinedload(Product.category))
+            .filter(Product.id.in_(product_ids))
+            .all()
+        }
+
+    product_totals: dict = {}
+    category_totals: dict = {}
+    for sale in completed:
+        for item in sale.items:
+            key = (item.product_code, item.product_name)
+            if key not in product_totals:
+                product_totals[key] = {"code": item.product_code, "name": item.product_name,
+                                       "qty": 0, "total": Decimal("0")}
+            product_totals[key]["qty"] += item.quantity
+            product_totals[key]["total"] += item.subtotal
+
+            product = products_map.get(item.product_id)
+            cat_name = product.category.name if product and product.category else "Sin categoría"
+            if cat_name not in category_totals:
+                category_totals[cat_name] = {"name": cat_name, "qty": 0, "total": Decimal("0")}
+            category_totals[cat_name]["qty"] += item.quantity
+            category_totals[cat_name]["total"] += item.subtotal
+
+    top_products = sorted(product_totals.values(), key=lambda x: x["total"], reverse=True)[:10]
+    for p in top_products:
+        p["total"] = float(p["total"])
+
+    top_categories = sorted(category_totals.values(), key=lambda x: x["total"], reverse=True)[:10]
+    for c in top_categories:
+        c["total"] = float(c["total"])
+
+    # Ventas por hora
+    hours: dict = {h: 0 for h in range(24)}
+    for sale in completed:
+        hours[sale.created_at.hour] += 1
+    sales_by_hour = [{"hour": h, "count": c} for h, c in hours.items()]
+
+    return {
+        "start": str(start),
+        "end": str(end),
+        "total_sales": len(completed),
+        "total_items": float(total_items_qty),
+        "total_revenue": float(total_revenue),
+        "total_tax": float(total_tax),
+        "total_discounts": float(total_disc),
+        "cash_sales": float(cash),
+        "card_sales": float(card),
+        "transfer_sales": float(transfer),
+        "mixed_sales": float(mixed),
+        "cancelled_sales": len(cancelled),
+        "top_products": top_products,
+        "top_categories": top_categories,
+        "sales_by_hour": sales_by_hour,
+    }

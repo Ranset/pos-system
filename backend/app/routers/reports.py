@@ -3,7 +3,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..services.auth import require_manager, require_cashier
-from ..services.reports import get_daily_summary, get_session_summary, get_range_summary
+from ..services.reports import (
+    get_daily_summary, get_session_summary, get_range_summary,
+    get_yearly_summary, get_period_summary,
+)
 
 router = APIRouter(prefix="/reports", tags=["Reportes"])
 
@@ -28,6 +31,30 @@ def range_report(
         from fastapi import HTTPException
         raise HTTPException(400, "El rango máximo es de 31 días")
     return get_range_summary(db, start, end)
+
+
+@router.get("/monthly")
+def monthly_report(
+    year: int = Query(default=date.today().year),
+    db: Session = Depends(get_db),
+    _=Depends(require_manager),
+):
+    """Resumen de ventas agrupadas por mes para un año (gráfica de ventas mensuales)."""
+    return get_yearly_summary(db, year)
+
+
+@router.get("/period")
+def period_report(
+    start: date = Query(...),
+    end: date = Query(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_manager),
+):
+    """Resumen agregado de un rango de fechas: top productos, top categorías y ventas por hora."""
+    if (end - start).days > 366:
+        from fastapi import HTTPException
+        raise HTTPException(400, "El rango máximo es de 366 días")
+    return get_period_summary(db, start, end)
 
 
 @router.get("/debug/session-returns/{session_id}")
