@@ -32,7 +32,14 @@
       "Bash(python -m py_compile views/reports.py)",
       "Bash(cd /c/_Almacen/Develop/pos-system/frontend && grep -n \"fpdf\\\\|FPDF\\\\|def.*pdf\\\\|_export\\\\|_generate.*pdf\" -i views/sales.py views/cash.py views/pos.py | head -50)",
       "Bash(.posvenv/Scripts/python.exe -c \"import fpdf; print\\(fpdf.__file__\\)\")",
-      "Bash(python -m py_compile views/products.py)"
+      "Bash(python -m py_compile views/products.py)",
+      "Bash(.posvenv/Scripts/python.exe -c ' *)",
+      "Bash(cd /c/_Almacen/Develop/pos-system/backend && grep -n \"class Product\\\\|class Category\\\\|class Inventory\\\\|class InventoryMovement\\\\|class MovementType\" -A 15 app/models/__init__.py)",
+      "Bash(cd /c/_Almacen/Develop/pos-system/frontend && grep -n \"FilePicker\\\\|pick_files\\\\|create_product\\\\|update_product\\\\|def get_products\\\\|class APIClient\\\\|import_products\" -r services/api.py views/products.py | head -30)",
+      "Bash(python -m py_compile app/routers/products.py app/schemas/__init__.py)",
+      "Bash(python -c ' *)",
+      "Bash(python -m py_compile views/products.py services/api.py)",
+      "Bash(python -m py_compile backend/app/schemas/__init__.py backend/app/routers/products.py frontend/services/api.py frontend/views/products.py)"
     ]
   }
 }

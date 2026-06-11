@@ -168,6 +168,42 @@ class InventoryMovementOut(BaseModel):
     created_at: datetime
     user_name: Optional[str] = None
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Importación de productos desde Excel
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ProductImportRow(BaseModel):
+    """Una fila del Excel de importación. Todos los campos son opcionales a
+    nivel de validación: las filas sin código/nombre/precio se omiten en el
+    propio endpoint (no provocan un error 422 de todo el lote)."""
+    code: Optional[str] = None
+    name: Optional[str] = None
+    initial_stock: Optional[float] = None
+    cost: Optional[float] = None
+    price: Optional[float] = None
+    description: Optional[str] = None
+    tax_rate: Optional[float] = None
+    discount_max: Optional[float] = None
+    category: Optional[str] = None
+    min_stock: Optional[float] = None
+    max_stock: Optional[float] = None
+
+
+class ProductImportRowResult(BaseModel):
+    row: int
+    code: Optional[str] = None
+    name: Optional[str] = None
+    status: str  # "created" | "updated" | "skipped"
+    detail: Optional[str] = None
+
+
+class ProductImportResult(BaseModel):
+    created: int
+    updated: int
+    skipped: int
+    details: list[ProductImportRowResult]
+
     model_config = {"from_attributes": True}
 
 

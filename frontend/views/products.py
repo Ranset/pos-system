@@ -398,6 +398,140 @@ def products_view(page: ft.Page, app_state: dict):
         dlg.open = True
         page.update()
 
+    # ── Importar productos desde Excel ────────────────────────────────────────
+    # Orden de columnas esperado (sin encabezado en la fila 1, datos desde la
+    # fila 2): Codigo, Nombre del Producto, Stock Inicial, Costo, Precio venta,
+    # Descripción, Tasa IVA, Descuento Max, Categoría, Stock mínimo, Stock máximo.
+    _IMPORT_PICKER_TAG = "products_import_picker"
+    page.overlay[:] = [c for c in page.overlay if getattr(c, "data", None) != _IMPORT_PICKER_TAG]
+
+    def _opt_float(value, default=None):
+        if value is None:
+            return default
+        if isinstance(value, str) and not value.strip():
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+
+    def _opt_str(value):
+        if value is None:
+            return None
+        s = str(value).strip()
+        return s or None
+
+    def _show_import_result(result: dict):
+        created = result.get("created", 0)
+        updated = result.get("updated", 0)
+        skipped = result.get("skipped", 0)
+        details = result.get("details", [])
+        skipped_rows = [d for d in details if d.get("status") == "skipped"]
+
+        content_controls = [
+            ft.Text(f"✅ Productos creados: {created}", color=SUCCESS, size=13),
+            ft.Text(f"♻️ Productos actualizados: {updated}", color=PRIMARY_LT, size=13),
+            ft.Text(f"⚠️ Filas omitidas: {skipped}", color=WARNING, size=13),
+        ]
+        if skipped_rows:
+            content_controls.append(ft.Divider(color=ft.colors.WHITE12))
+            content_controls.append(ft.Text("Detalle de filas omitidas:", size=12,
+                                             color=ft.colors.WHITE70, weight=ft.FontWeight.BOLD))
+            for d in skipped_rows[:30]:
+                label = f"Fila {d['row']}"
+                extra = " ".join(filter(None, [d.get("code"), d.get("name")]))
+                if extra:
+                    label += f" ({extra})"
+                content_controls.append(
+                    ft.Text(f"• {label}: {d.get('detail', '')}", size=11, color=ft.colors.WHITE54)
+                )
+            if len(skipped_rows) > 30:
+                content_controls.append(
+                    ft.Text(f"… y {len(skipped_rows) - 30} más", size=11, color=ft.colors.WHITE38)
+                )
+
+        dlg = ft.AlertDialog(
+            title=ft.Row([
+                ft.Icon(ft.icons.TASK_ALT, color=SUCCESS),
+                ft.Text("Importación finalizada", weight=ft.FontWeight.BOLD),
+            ], spacing=8),
+            content=ft.Container(
+                width=420,
+                content=ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=300,
+                                   controls=content_controls),
+            ),
+            actions=[
+                ft.ElevatedButton("Cerrar", icon=ft.icons.CHECK,
+                                  on_click=lambda _: setattr(dlg, "open", False) or page.update(),
+                                  style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE)),
+            ],
+        )
+        page.dialog = dlg
+        dlg.open = True
+        page.update()
+
+    def _on_import_file_result(e: ft.FilePickerResultEvent):
+        if not e.files:
+            return
+        file_path = e.files[0].path
+
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            _show_snack("La librería openpyxl no está instalada", ERROR)
+            return
+
+        try:
+            wb = load_workbook(file_path, data_only=True)
+            ws = wb.active
+            rows = []
+            for r in ws.iter_rows(min_row=2, values_only=True):
+                if r is None or all(c is None or str(c).strip() == "" for c in r):
+                    continue
+                cells = list(r) + [None] * 11
+                (code, name, stock, cost, price, desc,
+                 tax, disc, cat, min_s, max_s) = cells[:11]
+                rows.append({
+                    "code": _opt_str(code),
+                    "name": _opt_str(name),
+                    "initial_stock": _opt_float(stock),
+                    "cost": _opt_float(cost),
+                    "price": _opt_float(price),
+                    "description": _opt_str(desc),
+                    "tax_rate": _opt_float(tax),
+                    "discount_max": _opt_float(disc),
+                    "category": _opt_str(cat),
+                    "min_stock": _opt_float(min_s),
+                    "max_stock": _opt_float(max_s),
+                })
+        except Exception as ex:
+            _show_snack(f"No se pudo leer el archivo: {ex}", ERROR)
+            return
+
+        if not rows:
+            _show_snack("El archivo no contiene filas de datos", WARNING)
+            return
+
+        try:
+            result = api.import_products(rows)
+        except APIError as ex:
+            _show_snack(str(ex), ERROR)
+            return
+
+        load_categories()
+        load_products()
+        _show_import_result(result)
+
+    import_file_picker = ft.FilePicker(on_result=_on_import_file_result, data=_IMPORT_PICKER_TAG)
+    page.overlay.append(import_file_picker)
+
+    def open_import_dialog(e=None):
+        import_file_picker.pick_files(
+            dialog_title="Seleccionar archivo Excel de productos",
+            allow_multiple=False,
+            allowed_extensions=["xlsx"],
+        )
+
     # ── Diálogo Ajuste de Stock ───────────────────────────────────────────────
 
     def open_stock_dialog(product: dict):
@@ -704,6 +838,12 @@ def products_view(page: ft.Page, app_state: dict):
                                     show_inactive_switch,
                                     ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
                                                   on_click=load_products, tooltip="Actualizar"),
+                                    ft.OutlinedButton(
+                                        "Importar Excel", icon=ft.icons.UPLOAD_FILE,
+                                        on_click=open_import_dialog,
+                                        disabled=not is_manager,
+                                        tooltip="Agregar/actualizar productos desde un archivo .xlsx",
+                                    ),
                                     ft.ElevatedButton(
                                         "Nuevo producto", icon=ft.icons.ADD,
                                         on_click=lambda _: open_product_dialog(),
