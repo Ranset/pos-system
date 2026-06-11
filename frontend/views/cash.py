@@ -599,7 +599,7 @@ def cash_view(page: ft.Page, app_state: dict):
             label  = (f"{currency}{valor:.2f}" if valor < 1
                       else f"{currency}{int(valor)}")
             is_bill = valor >= 20
-            badge_color = ft.colors.AMBER_700 if is_bill else ft.colors.BLUE_GREY_400
+            badge_color = ft.colors.BLUE_GREY_400
             return ft.Row([
                 ft.Container(
                     width=56, height=26, border_radius=4,

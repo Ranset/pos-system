@@ -9,8 +9,8 @@ NAV_ITEMS = [
     # (index, label, icon, selected_icon, min_role)
     (0, "Punto de Venta", ft.icons.POINT_OF_SALE_OUTLINED, ft.icons.POINT_OF_SALE,     "cashier"),
     (1, "Caja",          ft.icons.ACCOUNT_BALANCE_WALLET_OUTLINED, ft.icons.ACCOUNT_BALANCE_WALLET, "cashier"),
-    (2, "Productos",     ft.icons.INVENTORY_2_OUTLINED,    ft.icons.INVENTORY_2,        "cashier"),
-    (3, "Inventario",    ft.icons.WAREHOUSE_OUTLINED,      ft.icons.WAREHOUSE,          "cashier"),
+    (2, "Productos",     ft.icons.INVENTORY_2_OUTLINED,    ft.icons.INVENTORY_2,        "manager"),
+    (3, "Inventario",    ft.icons.WAREHOUSE_OUTLINED,      ft.icons.WAREHOUSE,          "manager"),
     (7, "Ventas",        ft.icons.RECEIPT_LONG_OUTLINED,   ft.icons.RECEIPT_LONG,       "manager"),
     (4, "Usuarios",      ft.icons.GROUP_OUTLINED,          ft.icons.GROUP,              "admin"),
     (5, "Reportes",      ft.icons.ANALYTICS_OUTLINED,      ft.icons.ANALYTICS,          "manager"),

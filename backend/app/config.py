@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
     DEBUG: bool = False
 
+    # ── Zona horaria local de la tienda ────────────────────────────────────────
+    # `created_at`/`opened_at` se guardan en UTC (datetime.utcnow()). Los reportes
+    # necesitan agrupar/mostrar en hora local. Como el backend suele correr en un
+    # contenedor Docker en UTC, no podemos confiar en la hora del sistema:
+    # se define explícitamente el desfase (horas) entre la hora local y UTC.
+    # Ejemplo: Cuba (UTC-5) -> -5
+    TIMEZONE_OFFSET_HOURS: float = -5
+
     model_config = {"env_file": ".env"}
 
 

@@ -45,6 +45,9 @@ services:
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 480
       DEBUG: "false"
+      # Desfase horario local respecto a UTC (datetime.utcnow() se usa para
+      # guardar created_at). Ajustar según la zona horaria de la tienda.
+      TIMEZONE_OFFSET_HOURS: -5
     depends_on:
       db:
         condition: service_healthy

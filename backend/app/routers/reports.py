@@ -1,11 +1,12 @@
 from datetime import date
-from fastapi import APIRouter, Depends, Query
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..services.auth import require_manager, require_cashier
 from ..services.reports import (
     get_daily_summary, get_session_summary, get_range_summary,
-    get_yearly_summary, get_period_summary,
+    get_yearly_summary, get_period_summary, generate_custom_report, to_local,
 )
 
 router = APIRouter(prefix="/reports", tags=["Reportes"])
@@ -55,6 +56,27 @@ def period_report(
         from fastapi import HTTPException
         raise HTTPException(400, "El rango máximo es de 366 días")
     return get_period_summary(db, start, end)
+
+
+@router.get("/custom")
+def custom_report(
+    report_type: str = Query(...),
+    start: Optional[date] = Query(default=None),
+    end: Optional[date] = Query(default=None),
+    target_date: Optional[date] = Query(default=None),
+    cashier_id: Optional[int] = Query(default=None),
+    payment_method: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(require_manager),
+):
+    """Generador genérico de informes para la pestaña 'Informes'."""
+    try:
+        return generate_custom_report(
+            db, report_type, start=start, end=end, target_date=target_date,
+            cashier_id=cashier_id, payment_method=payment_method,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.get("/debug/session-returns/{session_id}")
@@ -146,7 +168,7 @@ def session_report(
     expense_detail = []
     for m in session.movements:
         entry = {
-            "time":   m.created_at.strftime("%H:%M:%S") if m.created_at else "",
+            "time":   to_local(m.created_at).strftime("%H:%M:%S") if m.created_at else "",
             "amount": float(m.amount),
             "reason": m.reason or "",
         }
@@ -174,7 +196,7 @@ def session_report(
             WHERE  return_id = :rid
         """), {"rid": r["id"]}).mappings().all()
         ret_detail.append({
-            "time":           r["created_at"].strftime("%H:%M:%S") if r["created_at"] else "",
+            "time":           to_local(r["created_at"]).strftime("%H:%M:%S") if r["created_at"] else "",
             "folio":          r["folio"] or "",
             "supervisor":     r["supervisor_name"] or "—",
             "reason":         r["reason"] or "",
@@ -215,7 +237,7 @@ def session_report(
             reason_c = m.group(2).strip()
 
         cancel_detail.append({
-            "time":      c["created_at"].strftime("%H:%M:%S") if c["created_at"] else "",
+            "time":      to_local(c["created_at"]).strftime("%H:%M:%S") if c["created_at"] else "",
             "folio":     c["folio"] or "",
             "total":     float(c["total"] or 0),
             "supervisor": supervisor_c,

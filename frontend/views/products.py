@@ -301,7 +301,23 @@ def products_view(page: ft.Page, app_state: dict):
                                visible=not is_edit, width=THIRD_W)
         err_text = ft.Text("", color=ERROR, size=12)
 
-        def save(e):
+        def _reset_fields_for_next():
+            """Limpia el formulario para capturar otro producto sin cerrar el diálogo."""
+            f_code.value  = ""
+            f_name.value  = ""
+            f_desc.value  = ""
+            f_price.value = ""
+            f_cost.value  = "0"
+            f_tax.value   = "0"
+            f_disc.value  = "0"
+            f_cat.value   = "0"
+            f_frac.value  = False
+            f_stock.value = "0"
+            f_min_s.value = "5"
+            f_max_s.value = "100"
+            err_text.value = ""
+
+        def save(e, keep_open: bool = False):
             err_text.value = ""
             if not f_code.value.strip() or not f_name.value.strip() or not f_price.value.strip():
                 err_text.value = "Código, nombre y precio son obligatorios"
@@ -335,8 +351,14 @@ def products_view(page: ft.Page, app_state: dict):
                 else:
                     api.update_product(product["id"], payload)
                     _show_snack("✅ Producto actualizado")
-                dlg.open = False
-                page.update()
+
+                if keep_open and not is_edit:
+                    _reset_fields_for_next()
+                    page.update()
+                    f_code.focus()
+                else:
+                    dlg.open = False
+                    page.update()
                 load_products()
             except APIError as ex:
                 err_text.value = str(ex)
@@ -365,6 +387,9 @@ def products_view(page: ft.Page, app_state: dict):
             actions=[
                 ft.TextButton("Cancelar",
                               on_click=lambda _: setattr(dlg, "open", False) or page.update()),
+                ft.OutlinedButton("Guardar y Otro", icon=ft.icons.PLAYLIST_ADD,
+                                  on_click=lambda e: save(e, keep_open=True),
+                                  visible=not is_edit),
                 ft.ElevatedButton("Guardar", icon=ft.icons.SAVE, on_click=save,
                                   style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE)),
             ],

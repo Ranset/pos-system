@@ -18,7 +18,21 @@
       "Bash(python -m py_compile backend/app/services/reports.py backend/app/routers/reports.py frontend/services/api.py)",
       "Bash(python -m py_compile frontend/views/reports.py)",
       "Bash(.posvenvScriptspython.exe -c ' *)",
-      "Bash(./.posvenv/Scripts/python.exe -c ' *)"
+      "Bash(./.posvenv/Scripts/python.exe -c ' *)",
+      "Bash(python -m py_compile backend/app/models/__init__.py)",
+      "Bash(python -c \"from backend.app.models import User, Inventory, InventoryMovement; print\\('ok'\\)\")",
+      "Bash(./.posvenv/Scripts/python.exe -c \"import openpyxl\")",
+      "Bash(./.posvenv/Scripts/python.exe -m pip install openpyxl==3.1.5)",
+      "Bash(./frontend/.posvenv/Scripts/python.exe -c ' *)",
+      "Bash(python -c \"import sqlalchemy\")",
+      "Bash(where python *)",
+      "Bash(python -m py_compile backend/app/services/reports.py backend/app/routers/reports.py)",
+      "Bash(python -m py_compile backend/app/services/reports.py backend/app/config.py)",
+      "Bash(python -c \"import flet_core.date_picker as dp; import inspect; print\\(inspect.signature\\(dp.DatePicker.__init__\\)\\)\")",
+      "Bash(python -m py_compile views/reports.py)",
+      "Bash(cd /c/_Almacen/Develop/pos-system/frontend && grep -n \"fpdf\\\\|FPDF\\\\|def.*pdf\\\\|_export\\\\|_generate.*pdf\" -i views/sales.py views/cash.py views/pos.py | head -50)",
+      "Bash(.posvenv/Scripts/python.exe -c \"import fpdf; print\\(fpdf.__file__\\)\")",
+      "Bash(python -m py_compile views/products.py)"
     ]
   }
 }

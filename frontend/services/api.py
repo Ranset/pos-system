@@ -243,6 +243,11 @@ class APIClient:
     def get_session_report(self, session_id: int):
         return self.get(f"/reports/session/{session_id}")
 
+    def get_custom_report(self, report_type: str, **params):
+        p = {"report_type": report_type}
+        p.update({k: v for k, v in params.items() if v is not None})
+        return self.get("/reports/custom", params=p)
+
     # ── Config ────────────────────────────────────────────────────────────────
 
     def get_config_map(self):

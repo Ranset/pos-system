@@ -2,7 +2,7 @@
 Vista de Reportes Financieros – Resumen mensual, Diario y por rango
 """
 import flet as ft
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
 
@@ -28,22 +28,63 @@ def reports_view(page: ft.Page, app_state: dict):
             ]),
         )
 
+    daily_content  = ft.Column(expand=True, spacing=10, scroll=ft.ScrollMode.AUTO)
     report_content = ft.Column(expand=True, spacing=10, scroll=ft.ScrollMode.AUTO)
     today_str      = date.today().isoformat()
 
+    # ── Selector de fecha (DatePicker) ────────────────────────────────────────
+    # Quitamos los selectores de fecha de "Reportes" agregados en una
+    # construcción anterior de esta vista (al navegar entre vistas el overlay
+    # de la página no se limpia automáticamente).
+    _REPORTS_DP_TAG = "reports_date_picker"
+    page.overlay[:] = [c for c in page.overlay if getattr(c, "data", None) != _REPORTS_DP_TAG]
+    _date_pickers = []
+
+    def _date_field(value: str, label: str = None, width: int = 135):
+        """Campo de fecha de solo lectura que abre un DatePicker al pulsar el ícono de calendario."""
+        tf = ft.TextField(
+            value=value, label=label, width=width,
+            hint_text="AAAA-MM-DD", border_color=PRIMARY, color=ft.colors.WHITE,
+            bgcolor=BG_SURFACE, text_size=12, read_only=True,
+        )
+
+        try:
+            init_date = date.fromisoformat((value or today_str).strip())
+        except (ValueError, TypeError):
+            init_date = date.today()
+
+        def _on_pick(e):
+            if dp.value:
+                tf.value = dp.value.date().isoformat() if hasattr(dp.value, "date") else str(dp.value)[:10]
+                page.update()
+
+        dp = ft.DatePicker(
+            value=init_date,
+            first_date=date(2020, 1, 1),
+            last_date=date(2100, 12, 31),
+            on_change=_on_pick,
+            data=_REPORTS_DP_TAG,
+        )
+        _date_pickers.append(dp)
+
+        def _open(e):
+            try:
+                dp.value = date.fromisoformat((tf.value or value or today_str).strip())
+            except (ValueError, TypeError):
+                dp.value = date.today()
+            dp.open = True
+            page.update()
+
+        tf.suffix = ft.IconButton(
+            ft.icons.CALENDAR_MONTH, icon_size=18, icon_color=PRIMARY,
+            on_click=_open, tooltip="Elegir fecha",
+        )
+        return tf, dp
+
     # Controles de fecha directos (sin ft.Ref) – usados por Reporte Diario / Rango
-    date_from_field = ft.TextField(
-        value=today_str, width=135,
-        hint_text="AAAA-MM-DD",
-        border_color=PRIMARY, color=ft.colors.WHITE,
-        bgcolor=BG_SURFACE, text_size=12,
-    )
-    date_to_field = ft.TextField(
-        value=today_str, width=135,
-        hint_text="AAAA-MM-DD",
-        border_color=PRIMARY, color=ft.colors.WHITE,
-        bgcolor=BG_SURFACE, text_size=12,
-    )
+    daily_date_field, _ = _date_field(today_str, width=135)
+    date_from_field, _  = _date_field(today_str, width=135)
+    date_to_field, _    = _date_field(today_str, width=135)
 
     def _show_snack(msg, color=ERROR):
         page.snack_bar = ft.SnackBar(ft.Text(msg, color=ft.colors.WHITE), bgcolor=color, open=True)
@@ -139,14 +180,8 @@ def reports_view(page: ft.Page, app_state: dict):
     period_total_qty_text = ft.Text("0", size=46, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE)
     period_top_categories = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=160)
 
-    period_from_field = ft.TextField(
-        label="Desde", value=today_str, width=150, hint_text="AAAA-MM-DD",
-        border_color=PRIMARY, color=ft.colors.WHITE, bgcolor=BG_SURFACE, text_size=12,
-    )
-    period_to_field = ft.TextField(
-        label="Hasta", value=today_str, width=150, hint_text="AAAA-MM-DD",
-        border_color=PRIMARY, color=ft.colors.WHITE, bgcolor=BG_SURFACE, text_size=12,
-    )
+    period_from_field, _ = _date_field(today_str, label="Desde", width=150)
+    period_to_field, _   = _date_field(today_str, label="Hasta", width=150)
 
     def _render_dashboard_chart():
         data = dash_state.get("monthly") or [
@@ -483,7 +518,7 @@ def reports_view(page: ft.Page, app_state: dict):
     # ─────────────────────────────────────────────────────────────────────────
 
     def render_daily(data: dict):
-        report_content.controls.clear()
+        daily_content.controls.clear()
         total_rev  = float(data.get("total_revenue", 0))
         total_tax  = float(data.get("total_tax", 0))
         total_disc = float(data.get("total_discounts", 0))
@@ -495,7 +530,7 @@ def reports_view(page: ft.Page, app_state: dict):
         avg_ticket = total_rev / total_s if total_s > 0 else 0
 
         # Tarjetas de métricas
-        report_content.controls.append(ft.Row(spacing=10, controls=[
+        daily_content.controls.append(ft.Row(spacing=10, controls=[
             _metric_card("Ingresos totales", f"{currency}{total_rev:,.2f}",
                          ft.icons.ATTACH_MONEY, SUCCESS),
             _metric_card("Ventas completadas", str(total_s),
@@ -509,7 +544,7 @@ def reports_view(page: ft.Page, app_state: dict):
 
         # Desglose por método de pago
         max_pay = max(cash_s, card_s, trans_s, 0.01)
-        report_content.controls.append(ft.Container(
+        daily_content.controls.append(ft.Container(
             bgcolor=BG_CARD, border_radius=12, padding=20,
             content=ft.Column(spacing=10, controls=[
                 ft.Text("Ventas por método de pago", size=14, color=ft.colors.WHITE,
@@ -532,7 +567,7 @@ def reports_view(page: ft.Page, app_state: dict):
                 _bar_row(p.get("name","")[:30], float(p.get("total",0)), max_top, PRIMARY_LT)
                 for p in top[:10]
             ]
-            report_content.controls.append(ft.Container(
+            daily_content.controls.append(ft.Container(
                 bgcolor=BG_CARD, border_radius=12, padding=20,
                 content=ft.Column(spacing=8, controls=[
                     ft.Text("Top 10 productos más vendidos", size=14,
@@ -549,7 +584,7 @@ def reports_view(page: ft.Page, app_state: dict):
                 _hour_bar(h.get("hour",0), h.get("count",0), max_h)
                 for h in hours_data
             ]
-            report_content.controls.append(ft.Container(
+            daily_content.controls.append(ft.Container(
                 bgcolor=BG_CARD, border_radius=12, padding=20,
                 content=ft.Column(spacing=8, controls=[
                     ft.Text("Distribución de ventas por hora", size=14,
@@ -627,12 +662,410 @@ def reports_view(page: ft.Page, app_state: dict):
         ))
         page.update()
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # TAB 3 — Informes (generador de informes personalizados)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    PAYMENT_OPTIONS = [
+        ("", "Todas"), ("cash", "Efectivo"), ("card", "Tarjeta"),
+        ("transfer", "Transferencia"), ("mixed", "Mixto"),
+    ]
+
+    REPORT_GROUPS = [
+        ("Ventas", [
+            {"key": "productos", "label": "Productos", "filters": ["range", "cashier", "payment_method"]},
+            {"key": "grupos_productos", "label": "Grupo de Productos", "filters": ["range", "cashier", "payment_method"]},
+            {"key": "cajeros", "label": "Cajeros", "filters": ["range", "payment_method"]},
+            {"key": "formas_pago", "label": "Formas de Pagos", "filters": ["range", "cashier"]},
+            {"key": "lista_ventas", "label": "Lista de Ventas", "filters": ["range", "cashier", "payment_method"]},
+            {"key": "ventas_diarias", "label": "Ventas Diarias", "filters": ["range", "cashier", "payment_method"]},
+            {"key": "ventas_horas", "label": "Ventas por Horas", "filters": ["single_date", "cashier", "payment_method"]},
+            {"key": "ventas_canceladas", "label": "Ventas Canceladas", "filters": ["range", "cashier"]},
+            {"key": "devoluciones", "label": "Devoluciones", "filters": ["range", "cashier"]},
+            {"key": "margen_beneficio", "label": "Margen de Beneficio", "filters": ["range", "cashier", "payment_method"]},
+            {"key": "efectivo_inicio_caja", "label": "Efectivo en Inicio de Caja", "filters": ["range", "cashier"]},
+            {"key": "descuentos_aplicados", "label": "Descuentos aplicados", "filters": ["range", "cashier", "payment_method"]},
+        ]),
+        ("Inventario", [
+            {"key": "lista_productos", "label": "Lista de productos", "filters": []},
+            {"key": "movimientos_inventario", "label": "Movimientos de inventarios", "filters": ["range"]},
+            {"key": "stock_bajo", "label": "Stock Bajo", "filters": []},
+        ]),
+    ]
+
+    informe_state = {"report_type": None, "report_def": None, "result": None}
+
+    informe_from_field, _ = _date_field(date.today().replace(day=1).isoformat(), label="Desde", width=140)
+    informe_to_field, _   = _date_field(today_str, label="Hasta", width=140)
+    informe_date_field, _ = _date_field(today_str, label="Fecha", width=140)
+    informe_cashier_dropdown = ft.Dropdown(
+        label="Cajero", width=190, border_color=PRIMARY, color=ft.colors.WHITE,
+        bgcolor=BG_SURFACE, text_size=12,
+        options=[ft.dropdown.Option("", "Todos")],
+    )
+    informe_payment_dropdown = ft.Dropdown(
+        label="Forma de pago", width=170, border_color=PRIMARY, color=ft.colors.WHITE,
+        bgcolor=BG_SURFACE, text_size=12,
+        options=[ft.dropdown.Option(v, l) for v, l in PAYMENT_OPTIONS],
+    )
+    informe_payment_dropdown.value = ""
+    informe_cashier_dropdown.value = ""
+
+    informe_filter_area = ft.Row(spacing=10, wrap=True, vertical_alignment=ft.CrossAxisAlignment.END)
+    informe_results_view = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
+    informe_title_text = ft.Text("Seleccione un informe", size=15, color=ft.colors.WHITE,
+                                  weight=ft.FontWeight.BOLD)
+
+    def _load_cashiers():
+        try:
+            users = api.get_users()
+            opts = [ft.dropdown.Option("", "Todos")]
+            for u in users:
+                opts.append(ft.dropdown.Option(str(u["id"]), u.get("full_name") or u.get("username", "")))
+            informe_cashier_dropdown.options = opts
+        except APIError:
+            pass
+
+    def _format_informe_cell(value, col_type: str) -> str:
+        if value is None or value == "":
+            return "—"
+        try:
+            if col_type == "currency":
+                return f"{currency}{float(value):,.2f}"
+            if col_type == "percent":
+                return f"{float(value):,.1f}%"
+            if col_type == "qty":
+                v = float(value)
+                return f"{v:,.0f}" if v == int(v) else f"{v:,.2f}"
+            if col_type == "number":
+                return f"{int(value):,}"
+            if col_type == "date":
+                return str(value)[:10]
+            if col_type == "datetime":
+                return str(value).replace("T", " ")[:19]
+        except (ValueError, TypeError):
+            return str(value)
+        return str(value)
+
+    def _build_report_list():
+        controls = []
+        for group_label, items in REPORT_GROUPS:
+            controls.append(ft.Container(
+                padding=ft.padding.only(left=14, right=14, top=14, bottom=4),
+                content=ft.Text(group_label.upper(), size=11, color=ft.colors.WHITE38,
+                                 weight=ft.FontWeight.BOLD),
+            ))
+            for item in items:
+                selected = informe_state["report_type"] == item["key"]
+                controls.append(
+                    ft.Container(
+                        on_click=lambda e, it=item: _select_report(it),
+                        padding=ft.padding.symmetric(horizontal=12, vertical=10),
+                        margin=ft.margin.symmetric(horizontal=6),
+                        border_radius=8,
+                        bgcolor=(PRIMARY + "33") if selected else None,
+                        ink=True,
+                        content=ft.Text(
+                            item["label"], size=13,
+                            color=PRIMARY_LT if selected else ft.colors.WHITE70,
+                            weight=ft.FontWeight.BOLD if selected else ft.FontWeight.NORMAL,
+                        ),
+                    )
+                )
+        return controls
+
+    informe_list_view = ft.ListView(expand=True, spacing=2, controls=_build_report_list())
+
+    def _build_filter_area():
+        item = informe_state.get("report_def")
+        informe_filter_area.controls.clear()
+        if item:
+            filters = item.get("filters", [])
+            if "range" in filters:
+                informe_filter_area.controls.append(informe_from_field)
+                informe_filter_area.controls.append(informe_to_field)
+            if "single_date" in filters:
+                informe_filter_area.controls.append(informe_date_field)
+            if "cashier" in filters:
+                informe_filter_area.controls.append(informe_cashier_dropdown)
+            if "payment_method" in filters:
+                informe_filter_area.controls.append(informe_payment_dropdown)
+        informe_filter_area.controls.append(
+            ft.ElevatedButton("Mostrar informe", icon=ft.icons.VISIBILITY,
+                              on_click=_generate_informe,
+                              style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE))
+        )
+        informe_filter_area.controls.append(
+            ft.OutlinedButton("PDF", icon=ft.icons.PICTURE_AS_PDF, on_click=_export_informe_pdf)
+        )
+        informe_filter_area.controls.append(
+            ft.OutlinedButton("Excel", icon=ft.icons.TABLE_CHART, on_click=_export_informe_excel)
+        )
+
+    def _select_report(item):
+        informe_state["report_type"] = item["key"]
+        informe_state["report_def"] = item
+        informe_state["result"] = None
+        informe_title_text.value = item["label"]
+        informe_list_view.controls = _build_report_list()
+        _build_filter_area()
+        informe_results_view.controls = [
+            _empty_placeholder("Configure los filtros y pulse 'Mostrar informe'")
+        ]
+        page.update()
+
+    def _render_informe_result(result: dict):
+        informe_results_view.controls.clear()
+        columns = result.get("columns", [])
+        rows = result.get("rows", [])
+        if not rows:
+            informe_results_view.controls.append(_empty_placeholder("No hay datos para los filtros seleccionados"))
+            page.update()
+            return
+
+        dt_columns = [
+            ft.DataColumn(
+                ft.Text(c["label"], color=ft.colors.WHITE70, size=12),
+                numeric=c["type"] in ("number", "qty", "currency", "percent"),
+            )
+            for c in columns
+        ]
+        dt_rows = []
+        for r in rows:
+            cells = [
+                ft.DataCell(ft.Text(_format_informe_cell(r.get(c["key"]), c["type"]),
+                                     size=12, color=ft.colors.WHITE70))
+                for c in columns
+            ]
+            dt_rows.append(ft.DataRow(cells=cells))
+
+        table = ft.DataTable(
+            border=ft.border.all(1, ft.colors.WHITE12),
+            border_radius=8,
+            heading_row_color=BG_SURFACE,
+            columns=dt_columns,
+            rows=dt_rows,
+        )
+        informe_results_view.controls.append(ft.Row(scroll=ft.ScrollMode.AUTO, controls=[table]))
+        informe_results_view.controls.append(
+            ft.Text(f"{len(rows)} registro(s)", size=11, color=ft.colors.WHITE38)
+        )
+        page.update()
+
+    def _generate_informe(e=None):
+        item = informe_state.get("report_def")
+        if not item:
+            _show_snack("Seleccione un tipo de informe")
+            return
+
+        params = {}
+        filters = item.get("filters", [])
+        if "range" in filters:
+            try:
+                f = date.fromisoformat((informe_from_field.value or "").strip())
+                t = date.fromisoformat((informe_to_field.value or "").strip())
+            except ValueError:
+                _show_snack("Formato de fecha inválido (use AAAA-MM-DD)")
+                return
+            if f > t:
+                _show_snack("La fecha 'Desde' no puede ser posterior a 'Hasta'")
+                return
+            params["start"] = f.isoformat()
+            params["end"] = t.isoformat()
+        if "single_date" in filters:
+            try:
+                d = date.fromisoformat((informe_date_field.value or "").strip())
+            except ValueError:
+                _show_snack("Formato de fecha inválido (use AAAA-MM-DD)")
+                return
+            params["target_date"] = d.isoformat()
+        if "cashier" in filters and informe_cashier_dropdown.value:
+            params["cashier_id"] = int(informe_cashier_dropdown.value)
+        if "payment_method" in filters and informe_payment_dropdown.value:
+            params["payment_method"] = informe_payment_dropdown.value
+
+        try:
+            result = api.get_custom_report(item["key"], **params)
+            informe_state["result"] = result
+            informe_title_text.value = result.get("title", item["label"])
+            _render_informe_result(result)
+        except APIError as ex:
+            _show_snack(str(ex))
+
+    # ── Exportación ────────────────────────────────────────────────────────
+
+    def _open_exported_file(path: str):
+        import subprocess, sys, os
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", path], check=False)
+            else:
+                subprocess.run(["xdg-open", path], check=False)
+        except Exception as ex:
+            _show_snack(f"No se pudo abrir el archivo: {ex}")
+
+    def _sanitize_pdf(text) -> str:
+        return str(text).encode("latin-1", "replace").decode("latin-1")
+
+    def _pdf_header(pdf, title: str):
+        """Dibuja la cabecera estándar de los PDF de reportes: datos de la
+        tienda (a la izquierda) y el nombre del informe + fecha/hora de
+        generación (a la derecha), seguidos de una línea separadora."""
+        store_name    = cfg.get("store.name") or "Mi Tienda"
+        store_address = cfg.get("store.address", "")
+        store_phone   = cfg.get("store.phone", "")
+        store_email   = cfg.get("store.email", "")
+        store_tax_id  = cfg.get("store.tax_id", "")
+
+        margin   = pdf.l_margin
+        usable_w = pdf.w - 2 * margin
+        half_w   = usable_w / 2
+        line_h   = 5
+        y0       = pdf.get_y()
+
+        # ── Columna izquierda: datos de la tienda ──────────────────────────
+        y = y0
+        pdf.set_xy(margin, y)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(half_w, 6, _sanitize_pdf(store_name))
+        y += 6
+
+        pdf.set_font("Helvetica", "", 8)
+        contact = " · ".join(filter(None, [store_phone, store_email]))
+        for line in filter(None, [store_address, contact,
+                                   (f"RFC/NIT: {store_tax_id}" if store_tax_id else "")]):
+            pdf.set_xy(margin, y)
+            pdf.cell(half_w, line_h, _sanitize_pdf(line))
+            y += line_h
+        y_left_end = y
+
+        # ── Columna derecha: nombre del informe y fecha de generación ──────
+        x2 = margin + half_w
+        y = y0
+        pdf.set_xy(x2, y)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(half_w, 6, _sanitize_pdf(title), align="R")
+        y += 6
+
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_xy(x2, y)
+        pdf.cell(half_w, line_h, "Generado: " + datetime.now().strftime("%d/%m/%Y %H:%M:%S"), align="R")
+        y += line_h
+        y_right_end = y
+
+        # ── Línea separadora ────────────────────────────────────────────────
+        y_end = max(y_left_end, y_right_end) + 2
+        pdf.set_draw_color(160, 160, 160)
+        pdf.line(margin, y_end, pdf.w - margin, y_end)
+        pdf.set_xy(margin, y_end + 4)
+
+    def _export_informe_pdf(e=None):
+        result = informe_state.get("result")
+        if not result or not result.get("rows"):
+            _show_snack("Genere un informe primero")
+            return
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            _show_snack("La librería fpdf2 no está instalada")
+            return
+
+        import tempfile, os
+        columns = result["columns"]
+        rows = result["rows"]
+        landscape = len(columns) > 5
+
+        pdf = FPDF(orientation="L" if landscape else "P", unit="mm", format="A4")
+        pdf.add_page()
+        _pdf_header(pdf, result.get("title", "Informe"))
+        pdf.set_font("Helvetica", "", 9)
+
+        page_width = pdf.w - 2 * pdf.l_margin
+        col_width = page_width / max(len(columns), 1)
+
+        pdf.set_font("Helvetica", "B", 9)
+        for c in columns:
+            pdf.cell(col_width, 8, _sanitize_pdf(c["label"]), border=1)
+        pdf.ln()
+
+        pdf.set_font("Helvetica", "", 8)
+        for r in rows:
+            for c in columns:
+                val = _format_informe_cell(r.get(c["key"]), c["type"])
+                pdf.cell(col_width, 7, _sanitize_pdf(val), border=1)
+            pdf.ln()
+
+        tmp_path = os.path.join(tempfile.gettempdir(), f"informe_{result['report_type']}.pdf")
+        pdf.output(tmp_path)
+        _open_exported_file(tmp_path)
+        _show_snack("PDF generado correctamente", SUCCESS)
+
+    def _export_informe_excel(e=None):
+        result = informe_state.get("result")
+        if not result or not result.get("rows"):
+            _show_snack("Genere un informe primero")
+            return
+
+        import tempfile, os
+        columns = result["columns"]
+        rows = result["rows"]
+        base_path = os.path.join(tempfile.gettempdir(), f"informe_{result['report_type']}")
+
+        try:
+            from openpyxl import Workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = (result.get("title", "Informe") or "Informe")[:31]
+            ws.append([c["label"] for c in columns])
+            for r in rows:
+                ws.append([r.get(c["key"]) for c in columns])
+            tmp_path = base_path + ".xlsx"
+            wb.save(tmp_path)
+        except ImportError:
+            import csv
+            tmp_path = base_path + ".csv"
+            with open(tmp_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow([c["label"] for c in columns])
+                for r in rows:
+                    writer.writerow([r.get(c["key"]) for c in columns])
+
+        _open_exported_file(tmp_path)
+        _show_snack("Archivo generado correctamente", SUCCESS)
+
+    _build_filter_area()
+    informe_results_view.controls.append(
+        _empty_placeholder("Seleccione un tipo de informe a la izquierda")
+    )
+
+    informe_content = ft.Row(
+        expand=True, spacing=12,
+        vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+        controls=[
+            ft.Container(
+                width=300, bgcolor=BG_CARD, border_radius=12, padding=ft.padding.symmetric(vertical=4),
+                content=informe_list_view,
+            ),
+            ft.Container(
+                expand=True, bgcolor=BG_CARD, border_radius=12, padding=16,
+                content=ft.Column(expand=True, spacing=10, controls=[
+                    informe_title_text,
+                    informe_filter_area,
+                    ft.Divider(color=ft.colors.WHITE12),
+                    informe_results_view,
+                ]),
+            ),
+        ],
+    )
+
     # ── Controles de filtros ──────────────────────────────────────────────────
 
     tab_index_ref = {"val": 0}
 
     def load_daily(e=None):
-        d = (date_from_field.value or today_str).strip()
+        d = (daily_date_field.value or today_str).strip()
         try:
             data = api.get_daily_report(d)
             render_daily(data)
@@ -649,7 +1082,20 @@ def reports_view(page: ft.Page, app_state: dict):
             _show_snack(str(ex))
 
     # Filas de filtros de fecha (Reporte Diario / Reporte por Rango)
-    date_filter_row = ft.Row(
+    daily_filter_row = ft.Row(
+        spacing=8,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        controls=[
+            ft.Text("Fecha:", color=ft.colors.WHITE54, size=12),
+            daily_date_field,
+            ft.ElevatedButton(
+                "Buscar", icon=ft.icons.SEARCH,
+                on_click=lambda e: load_daily(),
+                style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE),
+            ),
+        ],
+    )
+    range_filter_row = ft.Row(
         spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         controls=[
@@ -659,27 +1105,41 @@ def reports_view(page: ft.Page, app_state: dict):
             date_to_field,
             ft.ElevatedButton(
                 "Buscar", icon=ft.icons.SEARCH,
-                on_click=lambda e: load_daily() if tab_index_ref["val"] == 1 else load_range(),
+                on_click=lambda e: load_range(),
                 style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE),
             ),
         ],
     )
-    quick_access_row = ft.Row(
+    date_filter_row = ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                              controls=[daily_filter_row])
+
+    daily_quick_row = ft.Row(
         spacing=4,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         controls=[
             ft.Container(expand=True),
             ft.Text("Acceso rápido:", color=ft.colors.WHITE38, size=11),
-            ft.TextButton("Hoy",     on_click=lambda _: _quick_date(0),
+            ft.TextButton("Hoy",  on_click=lambda _: _quick_date(0),
                           style=ft.ButtonStyle(color=PRIMARY_LT)),
-            ft.TextButton("Ayer",    on_click=lambda _: _quick_date(1),
+            ft.TextButton("Ayer", on_click=lambda _: _quick_date(1),
                           style=ft.ButtonStyle(color=PRIMARY_LT)),
+        ],
+    )
+    range_quick_row = ft.Row(
+        spacing=4,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        controls=[
+            ft.Container(expand=True),
+            ft.Text("Acceso rápido:", color=ft.colors.WHITE38, size=11),
             ft.TextButton("7 días",  on_click=lambda _: _quick_range(7),
                           style=ft.ButtonStyle(color=PRIMARY_LT)),
             ft.TextButton("30 días", on_click=lambda _: _quick_range(30),
                           style=ft.ButtonStyle(color=PRIMARY_LT)),
         ],
     )
+    quick_access_row = ft.Row(spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                               controls=[daily_quick_row])
+
     date_filter_container  = ft.Container(
         bgcolor=BG_CARD,
         padding=ft.padding.only(left=16, right=16, top=10, bottom=6),
@@ -700,11 +1160,17 @@ def reports_view(page: ft.Page, app_state: dict):
         # Los filtros de fecha solo aplican a "Reporte Diario" y "Reporte por Rango"
         date_filter_container.visible  = idx in (1, 2)
         quick_access_container.visible = idx in (1, 2)
+        if idx == 1:
+            date_filter_row.controls = [daily_filter_row]
+            quick_access_row.controls = [daily_quick_row]
+        elif idx == 2:
+            date_filter_row.controls = [range_filter_row]
+            quick_access_row.controls = [range_quick_row]
         if idx == 0:
             load_monthly()
             load_period()
         elif idx == 1:
-            report_content.controls.clear()
+            daily_content.controls.clear()
             load_daily()
         elif idx == 2:
             report_content.controls.clear()
@@ -713,8 +1179,7 @@ def reports_view(page: ft.Page, app_state: dict):
 
     def _quick_date(days_ago: int):
         d = (date.today() - timedelta(days=days_ago)).isoformat()
-        date_from_field.value = d
-        date_to_field.value = d
+        daily_date_field.value = d
         page.update()
         load_daily()
 
@@ -731,6 +1196,10 @@ def reports_view(page: ft.Page, app_state: dict):
     quick_access_container.visible = False
     load_monthly()
     load_period()
+    _load_cashiers()
+
+    # Registrar los DatePicker en el overlay de la página
+    page.overlay.extend(_date_pickers)
 
     return ft.Container(
         expand=True, bgcolor=BG_DARK,
@@ -786,7 +1255,7 @@ def reports_view(page: ft.Page, app_state: dict):
                                 padding=ft.padding.all(12),
                                 content=ft.ListView(
                                     expand=True,
-                                    controls=[report_content],
+                                    controls=[daily_content],
                                     spacing=10,
                                 ),
                             ),
@@ -802,6 +1271,15 @@ def reports_view(page: ft.Page, app_state: dict):
                                     controls=[report_content],
                                     spacing=10,
                                 ),
+                            ),
+                        ),
+                        ft.Tab(
+                            text="Informes",
+                            icon=ft.icons.DESCRIPTION,
+                            content=ft.Container(
+                                expand=True,
+                                padding=ft.padding.all(12),
+                                content=informe_content,
                             ),
                         ),
                     ],
