@@ -17,7 +17,7 @@ from views import (
     inventory_view, users_view, cash_view,
     sales_view, reports_view, settings_view,
 )
-from components import build_nav_rail
+from components import build_nav_rail, build_server_config_button
 
 
 # ── Índices de vistas ─────────────────────────────────────────────────────────
@@ -272,20 +272,39 @@ def main(page: ft.Page):
     # ── Arranque ──────────────────────────────────────────────────────────────
 
     if not check_backend():
-        page.add(ft.Container(
-            expand=True, bgcolor=BG_DARK, alignment=ft.alignment.center,
-            content=ft.Column(horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=16, controls=[
-                ft.Icon(ft.icons.WIFI_OFF, size=72, color=ft.colors.WHITE24),
-                ft.Text("No se puede conectar al servidor", size=22, color=ft.colors.WHITE),
-                ft.Text(f"Verifica que el backend esté corriendo en:\n{api.base_url}",
-                        size=13, color=ft.colors.WHITE54, text_align=ft.TextAlign.CENTER),
-                ft.ElevatedButton(
-                    "Reintentar",
-                    icon=ft.icons.REFRESH,
-                    on_click=lambda _: main(page),
-                    style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE),
+        try:
+            import pyi_splash # type: ignore # Es normal que marque error se importa con pyinstaller
+            # Close the splash screen. It does not matter when the call
+            # to this function is made, the splash screen remains open until
+            # this function is called or the Python program is terminated.
+            pyi_splash.close()
+        except:
+            pass
+        
+        server_config_button = build_server_config_button(page, on_saved=lambda: main(page))
+        server_config_button.top = 12
+        server_config_button.right = 12
+
+        page.add(ft.Stack(
+            expand=True,
+            controls=[
+                ft.Container(
+                    expand=True, bgcolor=BG_DARK, alignment=ft.alignment.center,
+                    content=ft.Column(horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=16, controls=[
+                        ft.Icon(ft.icons.WIFI_OFF, size=72, color=ft.colors.WHITE24),
+                        ft.Text("No se puede conectar al servidor", size=22, color=ft.colors.WHITE),
+                        ft.Text(f"Verifica que el backend esté corriendo en:\n{api.base_url}",
+                                size=13, color=ft.colors.WHITE54, text_align=ft.TextAlign.CENTER),
+                        ft.ElevatedButton(
+                            "Reintentar",
+                            icon=ft.icons.REFRESH,
+                            on_click=lambda _: main(page),
+                            style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE),
+                        ),
+                    ]),
                 ),
-            ]),
+                server_config_button,
+            ],
         ))
         return
 
@@ -293,4 +312,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.app(target=main, assets_dir="assets")

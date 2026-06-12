@@ -10,3 +10,5 @@ frontend/__pycache__/
 frontend/components/__pycache__/
 frontend/services/__pycache__/
 frontend/views/__pycache__/
+build/
+dist/

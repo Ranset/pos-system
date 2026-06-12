@@ -78,6 +78,9 @@ CONFIG_GROUPS = [
 ]
 
 
+PRINTER_KEYS = {f[0] for g in CONFIG_GROUPS if g["category"] == "printer" for f in g["fields"]}
+
+
 def settings_view(page: ft.Page, app_state: dict):
     if not api.is_admin():
         return ft.Container(
@@ -168,6 +171,19 @@ def settings_view(page: ft.Page, app_state: dict):
         accordion.controls.clear()
         for group in CONFIG_GROUPS:
             field_controls = [_build_field(*f) for f in group["fields"]]
+            if group["category"] == "printer":
+                field_controls.insert(0, ft.Container(
+                    bgcolor=PRIMARY + "1A", border_radius=8,
+                    padding=ft.padding.all(10),
+                    content=ft.Row([
+                        ft.Icon(ft.icons.INFO_OUTLINE, color=PRIMARY_LT, size=16),
+                        ft.Text(
+                            "Esta configuración es local: aplica solo a esta caja "
+                            "registradora (esta computadora) y no se comparte con las demás.",
+                            size=12, color=ft.colors.WHITE54, expand=True,
+                        ),
+                    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
+                ))
             accordion.controls.append(ft.ExpansionPanel(
                 header=ft.ListTile(
                     leading=ft.Icon(group["icon"], color=PRIMARY),
@@ -186,10 +202,17 @@ def settings_view(page: ft.Page, app_state: dict):
     def save_all(e=None):
         try:
             configs = []
+            printer_values = {}
             for key, (ftype, ctrl) in field_refs.items():
                 val = ("true" if ctrl.value else "false") if ftype == "bool" else str(ctrl.value or "")
-                configs.append({"key": key, "value": val, "description": None, "category": "general"})
-            api.bulk_update_config(configs)
+                if key in PRINTER_KEYS:
+                    printer_values[key] = val
+                else:
+                    configs.append({"key": key, "value": val, "description": None, "category": "general"})
+            if configs:
+                api.bulk_update_config(configs)
+            if printer_values:
+                api.save_printer_config(printer_values)
             app_state["config"] = api.get_config_map()
             unsaved_badge.visible = False
             _show_snack("✅ Configuración guardada exitosamente")
@@ -199,14 +222,17 @@ def settings_view(page: ft.Page, app_state: dict):
     def reset_defaults(e=None):
         def confirm(_):
             try:
-                api.init_config(); load_config()
+                api.init_config()
+                api.save_printer_config({})
+                load_config()
                 _show_snack("✅ Configuración restablecida a valores por defecto")
             except APIError as ex:
                 _show_snack(str(ex), ERROR)
             page.dialog.open = False; page.update()
         dlg = ft.AlertDialog(
             title=ft.Text("Restablecer configuración"),
-            content=ft.Text("¿Restablecer todos los valores a su configuración por defecto?"),
+            content=ft.Text("¿Restablecer todos los valores a su configuración por defecto? "
+                             "Esto incluye la configuración de Impresora y Cajón de esta caja."),
             actions=[
                 ft.TextButton("Cancelar", on_click=lambda _: setattr(page.dialog,"open",False) or page.update()),
                 ft.ElevatedButton("Restablecer", on_click=confirm,
@@ -225,8 +251,11 @@ def settings_view(page: ft.Page, app_state: dict):
                     "subtotal": 99.99, "tax_amount": 0, "discount_amount": 0, "total": 99.99,
                     "payment_method": "cash", "payment_amount": 100, "change_amount": 0.01}
             ok = tp.print_ticket(sale)
-            _show_snack("✅ Ticket de prueba enviado" if ok else "⚠️ Impresora no disponible (modo consola)",
-                        SUCCESS if ok else WARNING)
+            if ok:
+                _show_snack("✅ Ticket de prueba enviado")
+            else:
+                detalle = f": {tp.last_error}" if tp.last_error else ""
+                _show_snack(f"⚠️ Impresora no disponible (modo consola){detalle}", WARNING)
         except Exception as ex:
             _show_snack(f"Error: {ex}", ERROR)
 

@@ -4,6 +4,7 @@ Vista de Login - Pantalla de autenticación
 import flet as ft
 from config import PRIMARY, BG_DARK, BG_CARD, ERROR, APP_TITLE
 from services import api, APIError
+from components import build_server_config_button
 
 
 def login_view(page: ft.Page, on_login_success):
@@ -60,50 +61,69 @@ def login_view(page: ft.Page, on_login_success):
 
     password_field.on_submit = do_login
 
-    return ft.Container(
+    try:
+        import pyi_splash # type: ignore # Es normal que marque error se importa con pyinstaller
+        # Close the splash screen. It does not matter when the call
+        # to this function is made, the splash screen remains open until
+        # this function is called or the Python program is terminated.
+        pyi_splash.close()
+    except:
+        pass
+
+    server_config_button = build_server_config_button(page)
+    server_config_button.top = 12
+    server_config_button.right = 12
+
+    return ft.Stack(
         expand=True,
-        bgcolor=BG_DARK,
-        alignment=ft.alignment.center,
-        content=ft.Column(
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=0,
-            controls=[
-                ft.Container(
-                    bgcolor=BG_CARD,
-                    border_radius=16,
-                    padding=40,
-                    width=400,
-                    content=ft.Column(
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=20,
-                        controls=[
-                            ft.Icon(ft.icons.POINT_OF_SALE, size=64, color=PRIMARY),
-                            ft.Text(APP_TITLE, size=26, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
-                            ft.Text("Inicia sesión para continuar", size=13, color=ft.colors.WHITE54),
-                            ft.Divider(color=ft.colors.WHITE12),
-                            username_field,
-                            password_field,
-                            error_text,
-                            ft.Row(
-                                alignment=ft.MainAxisAlignment.CENTER,
-                                controls=[loading],
+        controls=[
+            ft.Container(
+                expand=True,
+                bgcolor=BG_DARK,
+                alignment=ft.alignment.center,
+                content=ft.Column(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=0,
+                    controls=[
+                        ft.Container(
+                            bgcolor=BG_CARD,
+                            border_radius=16,
+                            padding=40,
+                            width=400,
+                            content=ft.Column(
+                                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                spacing=20,
+                                controls=[
+                                    ft.Icon(ft.icons.POINT_OF_SALE, size=64, color=PRIMARY),
+                                    ft.Text(APP_TITLE, size=26, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
+                                    ft.Text("Inicia sesión para continuar", size=13, color=ft.colors.WHITE54),
+                                    ft.Divider(color=ft.colors.WHITE12),
+                                    username_field,
+                                    password_field,
+                                    error_text,
+                                    ft.Row(
+                                        alignment=ft.MainAxisAlignment.CENTER,
+                                        controls=[loading],
+                                    ),
+                                    ft.ElevatedButton(
+                                        text="Iniciar sesión",
+                                        icon=ft.icons.LOGIN,
+                                        width=340,
+                                        height=48,
+                                        on_click=do_login,
+                                        style=ft.ButtonStyle(
+                                            bgcolor=PRIMARY,
+                                            color=ft.colors.WHITE,
+                                            shape=ft.RoundedRectangleBorder(radius=8),
+                                        ),
+                                    ),
+                                ],
                             ),
-                            ft.ElevatedButton(
-                                text="Iniciar sesión",
-                                icon=ft.icons.LOGIN,
-                                width=340,
-                                height=48,
-                                on_click=do_login,
-                                style=ft.ButtonStyle(
-                                    bgcolor=PRIMARY,
-                                    color=ft.colors.WHITE,
-                                    shape=ft.RoundedRectangleBorder(radius=8),
-                                ),
-                            ),
-                        ],
-                    ),
-                )
-            ],
-        ),
+                        )
+                    ],
+                ),
+            ),
+            server_config_button,
+        ],
     )

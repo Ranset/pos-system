@@ -4,7 +4,11 @@ Centraliza todas las llamadas a la API.
 """
 import httpx
 from typing import Optional, Any
-from config import API_BASE_URL
+from config import (
+    API_BASE_URL, save_api_base_url,
+    load_printer_config as _load_printer_config,
+    save_printer_config as _save_printer_config,
+)
 
 
 class APIError(Exception):
@@ -77,6 +81,11 @@ class APIClient:
     def logout(self):
         self.token = None
         self.current_user = None
+
+    def set_base_url(self, url: str):
+        """Cambia y persiste la dirección del backend (IP/dominio)."""
+        self.base_url = url.rstrip("/")
+        save_api_base_url(self.base_url)
 
     @property
     def is_authenticated(self) -> bool:
@@ -254,7 +263,18 @@ class APIClient:
     # ── Config ────────────────────────────────────────────────────────────────
 
     def get_config_map(self):
-        return self.get("/config/map")
+        """Configuración general del servidor, con las claves 'printer.*'
+        sobreescritas por la configuración local de esta caja registradora."""
+        cfg = self.get("/config/map")
+        cfg.update(_load_printer_config())
+        return cfg
+
+    def save_printer_config(self, values: dict):
+        """Guarda la configuración de Impresora y Cajón solo para esta caja (local)."""
+        _save_printer_config(values)
+
+    def get_local_printer_config(self) -> dict:
+        return _load_printer_config()
 
     def get_configs(self, category: str = None):
         params = {}

@@ -1,0 +1,1 @@
+flet build windows --product "CM Cash" --org "com.cmcancun" --company "CM Cancún" --copyright "Copyright (c) 2026 CM Cancún" --splash-color "#121212" --splash-dark-color "#121212"

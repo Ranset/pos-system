@@ -84,6 +84,28 @@ flet run --web --port 8080 main.py
 
 ---
 
+## 📦 Empaquetado del cliente (flet build)
+
+Para generar un ejecutable de escritorio (`.exe` en Windows) con ícono y splash screen propios:
+
+1. Coloca las imágenes en `frontend/assets/` (ver [`frontend/assets/README.md`](frontend/assets/README.md) para los nombres de archivo y tamaños recomendados).
+2. Ejecuta el build desde `frontend/`:
+
+```bash
+cd frontend/
+flet build windows ^
+  --product "POS System" ^
+  --org "com.miempresa" ^
+  --company "Mi Empresa" ^
+  --copyright "Copyright (c) 2026 Mi Empresa" ^
+  --splash-color "#121212" ^
+  --splash-dark-color "#121212"
+```
+
+El ejecutable queda en `frontend/build/windows/`.
+
+---
+
 ## 🔑 Acceso inicial
 
 | Campo    | Valor    |
