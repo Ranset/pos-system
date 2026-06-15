@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
-from ..models import Product, Category, Inventory, InventoryMovement
+from ..models import Product, Category, Inventory, InventoryMovement, Sale, SaleItem, SaleStatus
 from ..schemas import (
     ProductOut, ProductCreate, ProductUpdate, CategoryOut,
     CategoryCreate, CategoryUpdate, StockAdjustment, InventoryOut,
@@ -89,6 +89,36 @@ def get_by_barcode(code: str, db: Session = Depends(get_db), _=Depends(require_c
     if not product:
         raise HTTPException(404, "Producto no encontrado")
     return product
+
+
+@router.get("/recent", response_model=List[ProductOut])
+def list_recent_products(
+    limit: int = Query(60, le=200),
+    db: Session = Depends(get_db),
+    _=Depends(require_cashier),
+):
+    """Productos activos ordenados por la fecha de su venta más reciente,
+    para la pestaña "Recientes" del Punto de Venta."""
+    last_sold = (
+        db.query(
+            SaleItem.product_id.label("product_id"),
+            func.max(Sale.created_at).label("last_sold"),
+        )
+        .join(Sale, SaleItem.sale_id == Sale.id)
+        .filter(SaleItem.product_id.isnot(None))
+        .filter(Sale.status == SaleStatus.COMPLETED.value)
+        .group_by(SaleItem.product_id)
+        .subquery()
+    )
+    return (
+        db.query(Product)
+        .join(last_sold, Product.id == last_sold.c.product_id)
+        .options(joinedload(Product.category), joinedload(Product.inventory))
+        .filter(Product.is_active == True)
+        .order_by(last_sold.c.last_sold.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/{product_id}", response_model=ProductOut)

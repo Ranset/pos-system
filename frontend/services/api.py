@@ -128,6 +128,9 @@ class APIClient:
     def get_product_by_barcode(self, code: str):
         return self.get(f"/products/barcode/{code}")
 
+    def get_recent_products(self, limit: int = 60):
+        return self.get("/products/recent", params={"limit": limit})
+
     def create_product(self, data: dict):
         return self.post("/products/", data)
 

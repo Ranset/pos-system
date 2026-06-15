@@ -362,7 +362,7 @@ def pos_view(page: ft.Page, app_state: dict):
             })
             rebuild_cart()
 
-        # ── Buscador y grid de productos ──────────────────────────────────────
+        # ── Buscador, categorías y grid de productos ────────────────────────────
         search_field = ft.TextField(
             hint_text="Código de barras o nombre del producto...",
             prefix_icon=ft.icons.SEARCH,
@@ -372,76 +372,174 @@ def pos_view(page: ft.Page, app_state: dict):
             hint_style=ft.TextStyle(color=ft.colors.WHITE38),
             autofocus=True,
         )
+
+        PRODUCTS_PER_PAGE = 24
+
         product_grid = ft.GridView(
             expand=True, runs_count=4, max_extent=155,
             spacing=8, run_spacing=8, padding=8,
         )
+        empty_label = ft.Text("", color=ft.colors.WHITE38, size=13)
+        empty_state = ft.Container(
+            expand=True, alignment=ft.alignment.center,
+            content=ft.Column(
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8,
+                controls=[
+                    ft.Icon(ft.icons.INVENTORY_2_OUTLINED, color=ft.colors.WHITE24, size=48),
+                    empty_label,
+                ],
+            ),
+        )
+        grid_container = ft.Container(expand=True, padding=4, content=product_grid)
+
+        page_label = ft.Text("—", size=12, color=ft.colors.WHITE54)
+        prev_page_btn = ft.IconButton(ft.icons.CHEVRON_LEFT, icon_color=ft.colors.WHITE54,
+                                       tooltip="Página anterior", disabled=True)
+        next_page_btn = ft.IconButton(ft.icons.CHEVRON_RIGHT, icon_color=ft.colors.WHITE54,
+                                       tooltip="Página siguiente", disabled=True)
+        pagination_row = ft.Container(
+            padding=ft.padding.only(bottom=4),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER, spacing=4,
+                controls=[prev_page_btn, page_label, next_page_btn],
+            ),
+        )
+
         cat_row = ft.Row(scroll=ft.ScrollMode.AUTO, spacing=6)
+        cat_buttons: dict = {}
+
+        # items  → lista completa de productos del filtro/categoría activa
+        # page   → página actual (0-indexada)
+        # active → clave de la pestaña activa ("recent", "all" o id de categoría)
+        # reload → función sin argumentos para recargar la vista activa
+        pos_state = {"items": [], "page": 0, "active": "recent", "reload": None}
+
+        def _build_card(p):
+            inv      = p.get("inventory") or {}
+            stock    = float(inv.get("quantity", 0))
+            no_stock = stock <= 0 and not allow_neg
+            cat      = p.get("category") or {}
+            cc       = cat.get("color", PRIMARY)
+            name     = p.get("name", "")
+
+            return ft.Container(
+                bgcolor=BG_CARD if not no_stock else BG_SURFACE,
+                border_radius=10,
+                border=ft.border.all(1, cc if not no_stock else ft.colors.WHITE12),
+                padding=10, on_click=(lambda _: add_to_cart(p)) if not no_stock else None,
+                ink=not no_stock, tooltip=f"{name}\nStock: {stock:.0f}",
+                content=ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    alignment=ft.MainAxisAlignment.CENTER, spacing=4,
+                    controls=[
+                        ft.Text(name, size=12, text_align=ft.TextAlign.CENTER,
+                                max_lines=3, overflow=ft.TextOverflow.ELLIPSIS,
+                                color=ft.colors.WHITE if not no_stock else ft.colors.WHITE38),
+                        ft.Text(f"{currency}{float(p.get('price',0)):.2f}", size=13,
+                                color=PRIMARY_LT if not no_stock else ft.colors.WHITE24,
+                                weight=ft.FontWeight.BOLD),
+                        ft.Text(f"Stock: {stock:.0f}", size=10,
+                                color=SUCCESS if stock > 5 else WARNING if stock > 0 else ERROR),
+                    ],
+                ),
+            )
+
+        def render_page():
+            items = pos_state["items"]
+            total_pages = max(1, -(-len(items) // PRODUCTS_PER_PAGE))   # ceil
+            pos_state["page"] = max(0, min(pos_state["page"], total_pages - 1))
+
+            if not items:
+                empty_label.value = ("Aún no se han registrado ventas"
+                                      if pos_state["active"] == "recent"
+                                      else "No se encontraron productos")
+                grid_container.content = empty_state
+                page_label.value = "—"
+                prev_page_btn.disabled = True
+                next_page_btn.disabled = True
+            else:
+                start = pos_state["page"] * PRODUCTS_PER_PAGE
+                product_grid.controls = [_build_card(p) for p in items[start:start + PRODUCTS_PER_PAGE]]
+                grid_container.content = product_grid
+                page_label.value = f"Página {pos_state['page'] + 1}/{total_pages}  ·  {len(items)} producto(s)"
+                prev_page_btn.disabled = pos_state["page"] <= 0
+                next_page_btn.disabled = pos_state["page"] >= total_pages - 1
+            page.update()
+
+        def _go_page(delta):
+            pos_state["page"] += delta
+            render_page()
+
+        prev_page_btn.on_click = lambda _: _go_page(-1)
+        next_page_btn.on_click = lambda _: _go_page(1)
 
         def load_products(search=None, category_id=None):
             try:
-                products = api.get_products(search=search, category_id=category_id)
-                product_grid.controls.clear()
-                for p in products[:40]:
-                    inv   = p.get("inventory") or {}
-                    stock = float(inv.get("quantity", 0))
-                    no_stock = stock <= 0 and not allow_neg
-                    cat   = p.get("category") or {}
-                    cc    = cat.get("color", PRIMARY)
-
-                    def make_click(prod):
-                        return lambda _: add_to_cart(prod)
-
-                    product_grid.controls.append(ft.Container(
-                        bgcolor=BG_CARD if not no_stock else BG_SURFACE,
-                        border_radius=10,
-                        border=ft.border.all(1, cc if not no_stock else ft.colors.WHITE12),
-                        padding=10, on_click=make_click(p) if not no_stock else None,
-                        ink=not no_stock, tooltip=f"Stock: {stock:.0f}",
-                        content=ft.Column(
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4,
-                            controls=[
-                                ft.Container(width=34, height=34, border_radius=17,
-                                             bgcolor=cc + "33", alignment=ft.alignment.center,
-                                             content=ft.Icon(ft.icons.INVENTORY_2_OUTLINED,
-                                                             color=cc, size=18)),
-                                ft.Text(p.get("name","")[:22], size=11, text_align=ft.TextAlign.CENTER,
-                                        max_lines=2, color=ft.colors.WHITE if not no_stock else ft.colors.WHITE38),
-                                ft.Text(f"{currency}{float(p.get('price',0)):.2f}", size=13,
-                                        color=PRIMARY_LT if not no_stock else ft.colors.WHITE24,
-                                        weight=ft.FontWeight.BOLD),
-                                ft.Text(f"Stock: {stock:.0f}", size=10,
-                                        color=SUCCESS if stock > 5 else WARNING if stock > 0 else ERROR),
-                            ],
-                        ),
-                    ))
-                page.update()
+                pos_state["items"] = api.get_products(search=search, category_id=category_id)
             except APIError as ex:
+                pos_state["items"] = []
                 _snack(str(ex), ERROR)
+            pos_state["page"] = 0
+            render_page()
+
+        def load_recent_products():
+            try:
+                pos_state["items"] = api.get_recent_products()
+            except APIError as ex:
+                pos_state["items"] = []
+                _snack(str(ex), ERROR)
+            pos_state["page"] = 0
+            render_page()
+
+        def reload_current():
+            (pos_state.get("reload") or load_recent_products)()
+
+        def _restyle_cat_buttons():
+            for key, cont in cat_buttons.items():
+                cont.bgcolor = (PRIMARY + "33") if key == pos_state["active"] else None
+
+        def select_category(key, loader):
+            pos_state["active"] = key
+            pos_state["reload"] = loader
+            search_field.value = ""
+            _restyle_cat_buttons()
+            loader()
 
         def load_categories():
             try:
                 cats = api.get_categories()
-                cat_row.controls.clear()
-                cat_row.controls.append(
-                    ft.TextButton("Todos", style=ft.ButtonStyle(color=ft.colors.WHITE),
-                                  on_click=lambda _: load_products())
-                )
-                for cat in cats:
-                    def mk(cid):
-                        return lambda _: load_products(category_id=cid)
-                    cat_row.controls.append(
-                        ft.TextButton(cat.get("name",""),
-                                      style=ft.ButtonStyle(color=cat.get("color", PRIMARY)),
-                                      on_click=mk(cat["id"]))
-                    )
-                page.update()
             except Exception:
-                pass
+                cats = []
+
+            cat_row.controls.clear()
+            cat_buttons.clear()
+
+            def add_tab(key, label, color, loader, icon=None):
+                btn = ft.TextButton(label, icon=icon, style=ft.ButtonStyle(color=color))
+                cont = ft.Container(
+                    content=btn, border_radius=6,
+                    padding=ft.padding.symmetric(0, 4),
+                    bgcolor=(PRIMARY + "33") if key == pos_state["active"] else None,
+                )
+                btn.on_click = lambda _: select_category(key, loader)
+                cat_buttons[key] = cont
+                cat_row.controls.append(cont)
+
+            add_tab("recent", "Recientes", PRIMARY_LT, load_recent_products, icon=ft.icons.HISTORY)
+            add_tab("all", "Todos", ft.colors.WHITE, load_products)
+            for cat in cats:
+                cid = cat["id"]
+                add_tab(cid, cat.get("name", ""), cat.get("color", PRIMARY),
+                        lambda cid=cid: load_products(category_id=cid))
+
+            page.update()
 
         def search_or_scan(e=None):
             term = (search_field.value or "").strip()
             if not term:
+                pos_state["active"] = "all"
+                pos_state["reload"] = load_products
+                _restyle_cat_buttons()
                 load_products()
                 _safe_focus(search_field)
                 return
@@ -451,6 +549,9 @@ def pos_view(page: ft.Page, app_state: dict):
                 search_field.value = ""
                 page.update()
             except APIError:
+                pos_state["active"] = "all"
+                pos_state["reload"] = lambda: load_products(search=term)
+                _restyle_cat_buttons()
                 load_products(search=term)
             finally:
                 # Devolver el foco al campo de búsqueda siempre,
@@ -1214,7 +1315,7 @@ def pos_view(page: ft.Page, app_state: dict):
             load_sales()
 
         load_categories()
-        load_products()
+        load_recent_products()
         rebuild_cart()
 
         # Barra de info de sesión
@@ -1251,7 +1352,7 @@ def pos_view(page: ft.Page, app_state: dict):
                                  ft.IconButton(ft.icons.QR_CODE_SCANNER, icon_color=PRIMARY,
                                                on_click=search_or_scan, tooltip="Escanear / Buscar"),
                                  ft.IconButton(ft.icons.REFRESH, icon_color=ft.colors.WHITE38,
-                                               on_click=lambda _: load_products(),
+                                               on_click=lambda _: reload_current(),
                                                tooltip="Recargar catálogo de productos"),
                                  session_badge,
                                  change_session_btn,
@@ -1259,7 +1360,8 @@ def pos_view(page: ft.Page, app_state: dict):
                 ft.Container(bgcolor=BG_CARD,
                              padding=ft.padding.symmetric(horizontal=8, vertical=4),
                              content=cat_row),
-                ft.Container(expand=True, padding=4, content=product_grid),
+                grid_container,
+                pagination_row,
             ]),
         )
 
@@ -1362,11 +1464,14 @@ def pos_view(page: ft.Page, app_state: dict):
             if k == c.get("hotkey.pos.cobrar", "F12"):
                 go_to_payment()
             elif k == c.get("hotkey.pos.refresh", "F5"):
-                load_products()
+                reload_current()
                 _safe_focus(search_field)
             elif k == c.get("hotkey.pos.clear_search", "Escape") and not e.ctrl:
                 if search_field.value:
                     search_field.value = ""
+                    pos_state["active"] = "all"
+                    pos_state["reload"] = load_products
+                    _restyle_cat_buttons()
                     load_products()
                 _safe_focus(search_field)
 
