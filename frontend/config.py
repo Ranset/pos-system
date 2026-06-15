@@ -8,8 +8,8 @@ import appdirs
 
 load_dotenv()
 
-APP_VERSION: str = "1.0.0"
-APP_TITLE: str = "CM Cash"
+APP_VERSION: str = "1.0.2"
+APP_TITLE: str = f"CM Cash v{APP_VERSION}"
 
 # Archivo donde se guarda la dirección del servidor configurada desde la UI.
 # Tiene prioridad sobre API_BASE_URL del .env una vez que el usuario la cambia.

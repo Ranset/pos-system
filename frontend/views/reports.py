@@ -670,6 +670,7 @@ def reports_view(page: ft.Page, app_state: dict):
         ("", "Todas"), ("cash", "Efectivo"), ("card", "Tarjeta"),
         ("transfer", "Transferencia"), ("mixed", "Mixto"),
     ]
+    PAYMENT_LABELS = dict(PAYMENT_OPTIONS)
 
     REPORT_GROUPS = [
         ("Ventas", [
@@ -693,7 +694,8 @@ def reports_view(page: ft.Page, app_state: dict):
         ]),
     ]
 
-    informe_state = {"report_type": None, "report_def": None, "result": None}
+    informe_state = {"report_type": None, "report_def": None, "result": None, "filters_desc": ""}
+    cashier_names: dict = {}
 
     informe_from_field, _ = _date_field(date.today().replace(day=1).isoformat(), label="Desde", width=140)
     informe_to_field, _   = _date_field(today_str, label="Hasta", width=140)
@@ -721,10 +723,41 @@ def reports_view(page: ft.Page, app_state: dict):
             users = api.get_users()
             opts = [ft.dropdown.Option("", "Todos")]
             for u in users:
-                opts.append(ft.dropdown.Option(str(u["id"]), u.get("full_name") or u.get("username", "")))
+                name = u.get("full_name") or u.get("username", "")
+                opts.append(ft.dropdown.Option(str(u["id"]), name))
+                cashier_names[str(u["id"])] = name
             informe_cashier_dropdown.options = opts
         except APIError:
             pass
+
+    def _fmt_date(iso_str: str) -> str:
+        try:
+            return date.fromisoformat(iso_str).strftime("%d/%m/%Y")
+        except (ValueError, TypeError):
+            return str(iso_str)
+
+    def _build_filters_desc(item: dict, params: dict) -> str:
+        """Describe en texto los filtros aplicados, para mostrarlos en la
+        cabecera de los informes exportados."""
+        filters = item.get("filters", [])
+        parts = []
+        if "range" in filters and "start" in params:
+            parts.append(f"Periodo: {_fmt_date(params['start'])} - {_fmt_date(params['end'])}")
+        if "single_date" in filters and "target_date" in params:
+            parts.append(f"Fecha: {_fmt_date(params['target_date'])}")
+        if "cashier" in filters:
+            if "cashier_id" in params:
+                name = cashier_names.get(str(params["cashier_id"]), f"#{params['cashier_id']}")
+                parts.append(f"Cajero: {name}")
+            else:
+                parts.append("Cajero: Todos")
+        if "payment_method" in filters:
+            if params.get("payment_method"):
+                label = PAYMENT_LABELS.get(params["payment_method"], params["payment_method"])
+                parts.append(f"Forma de pago: {label}")
+            else:
+                parts.append("Forma de pago: Todas")
+        return "   |   ".join(parts)
 
     def _format_informe_cell(value, col_type: str) -> str:
         if value is None or value == "":
@@ -887,6 +920,7 @@ def reports_view(page: ft.Page, app_state: dict):
         try:
             result = api.get_custom_report(item["key"], **params)
             informe_state["result"] = result
+            informe_state["filters_desc"] = _build_filters_desc(item, params)
             informe_title_text.value = result.get("title", item["label"])
             _render_informe_result(result)
         except APIError as ex:
@@ -909,10 +943,11 @@ def reports_view(page: ft.Page, app_state: dict):
     def _sanitize_pdf(text) -> str:
         return str(text).encode("latin-1", "replace").decode("latin-1")
 
-    def _pdf_header(pdf, title: str):
+    def _pdf_header(pdf, title: str, filters_desc: str = ""):
         """Dibuja la cabecera estándar de los PDF de reportes: datos de la
         tienda (a la izquierda) y el nombre del informe + fecha/hora de
-        generación (a la derecha), seguidos de una línea separadora."""
+        generación (a la derecha), seguidos de la descripción de los filtros
+        aplicados (si los hay) y una línea separadora."""
         store_name    = cfg.get("store.name") or "Mi Tienda"
         store_address = cfg.get("store.address", "")
         store_phone   = cfg.get("store.phone", "")
@@ -955,8 +990,16 @@ def reports_view(page: ft.Page, app_state: dict):
         y += line_h
         y_right_end = y
 
+        # ── Filtros aplicados (línea completa, debajo de ambas columnas) ───
+        y_cols_end = max(y_left_end, y_right_end)
+        if filters_desc:
+            pdf.set_xy(margin, y_cols_end)
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.multi_cell(usable_w, line_h, _sanitize_pdf(f"Filtros: {filters_desc}"))
+            y_cols_end = pdf.get_y()
+
         # ── Línea separadora ────────────────────────────────────────────────
-        y_end = max(y_left_end, y_right_end) + 2
+        y_end = y_cols_end + 2
         pdf.set_draw_color(160, 160, 160)
         pdf.line(margin, y_end, pdf.w - margin, y_end)
         pdf.set_xy(margin, y_end + 4)
@@ -979,22 +1022,49 @@ def reports_view(page: ft.Page, app_state: dict):
 
         pdf = FPDF(orientation="L" if landscape else "P", unit="mm", format="A4")
         pdf.add_page()
-        _pdf_header(pdf, result.get("title", "Informe"))
+        _pdf_header(pdf, result.get("title", "Informe"), informe_state.get("filters_desc", ""))
         pdf.set_font("Helvetica", "", 9)
 
         page_width = pdf.w - 2 * pdf.l_margin
-        col_width = page_width / max(len(columns), 1)
+
+        # Ancho de columna proporcional al contenido: las columnas numéricas
+        # (cantidades, montos, fechas) son angostas y las de texto (nombres,
+        # categorías, etc.) obtienen el espacio restante según su contenido más
+        # largo, para que los nombres de producto no se encimen con la siguiente
+        # columna.
+        NUMERIC_TYPES = ("currency", "qty", "number", "percent", "date")
+        weights = []
+        for c in columns:
+            if c["type"] in NUMERIC_TYPES:
+                weights.append(1.0)
+            else:
+                max_len = len(str(c["label"]))
+                for r in rows:
+                    val = _format_informe_cell(r.get(c["key"]), c["type"])
+                    max_len = max(max_len, len(val))
+                weights.append(max(1.5, min(max_len / 12, 4.0)))
+
+        total_weight = sum(weights) or 1
+        col_widths = [w / total_weight * page_width for w in weights]
+
+        def fit_text(text: str, width: float) -> str:
+            """Recorta el texto con '...' si no entra en el ancho de la celda."""
+            if pdf.get_string_width(text) <= width - 2:
+                return text
+            while text and pdf.get_string_width(text + "...") > width - 2:
+                text = text[:-1]
+            return (text + "...") if text else "..."
 
         pdf.set_font("Helvetica", "B", 9)
-        for c in columns:
-            pdf.cell(col_width, 8, _sanitize_pdf(c["label"]), border=1)
+        for c, w in zip(columns, col_widths):
+            pdf.cell(w, 8, fit_text(_sanitize_pdf(c["label"]), w), border=1)
         pdf.ln()
 
         pdf.set_font("Helvetica", "", 8)
         for r in rows:
-            for c in columns:
+            for c, w in zip(columns, col_widths):
                 val = _format_informe_cell(r.get(c["key"]), c["type"])
-                pdf.cell(col_width, 7, _sanitize_pdf(val), border=1)
+                pdf.cell(w, 7, fit_text(_sanitize_pdf(val), w), border=1)
             pdf.ln()
 
         tmp_path = os.path.join(tempfile.gettempdir(), f"informe_{result['report_type']}.pdf")
