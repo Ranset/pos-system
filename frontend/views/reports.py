@@ -983,18 +983,45 @@ def reports_view(page: ft.Page, app_state: dict):
         pdf.set_font("Helvetica", "", 9)
 
         page_width = pdf.w - 2 * pdf.l_margin
-        col_width = page_width / max(len(columns), 1)
+
+        # Ancho de columna proporcional al contenido: las columnas numéricas
+        # (cantidades, montos, fechas) son angostas y las de texto (nombres,
+        # categorías, etc.) obtienen el espacio restante según su contenido más
+        # largo, para que los nombres de producto no se encimen con la siguiente
+        # columna.
+        NUMERIC_TYPES = ("currency", "qty", "number", "percent", "date")
+        weights = []
+        for c in columns:
+            if c["type"] in NUMERIC_TYPES:
+                weights.append(1.0)
+            else:
+                max_len = len(str(c["label"]))
+                for r in rows:
+                    val = _format_informe_cell(r.get(c["key"]), c["type"])
+                    max_len = max(max_len, len(val))
+                weights.append(max(1.5, min(max_len / 12, 4.0)))
+
+        total_weight = sum(weights) or 1
+        col_widths = [w / total_weight * page_width for w in weights]
+
+        def fit_text(text: str, width: float) -> str:
+            """Recorta el texto con '...' si no entra en el ancho de la celda."""
+            if pdf.get_string_width(text) <= width - 2:
+                return text
+            while text and pdf.get_string_width(text + "...") > width - 2:
+                text = text[:-1]
+            return (text + "...") if text else "..."
 
         pdf.set_font("Helvetica", "B", 9)
-        for c in columns:
-            pdf.cell(col_width, 8, _sanitize_pdf(c["label"]), border=1)
+        for c, w in zip(columns, col_widths):
+            pdf.cell(w, 8, fit_text(_sanitize_pdf(c["label"]), w), border=1)
         pdf.ln()
 
         pdf.set_font("Helvetica", "", 8)
         for r in rows:
-            for c in columns:
+            for c, w in zip(columns, col_widths):
                 val = _format_informe_cell(r.get(c["key"]), c["type"])
-                pdf.cell(col_width, 7, _sanitize_pdf(val), border=1)
+                pdf.cell(w, 7, fit_text(_sanitize_pdf(val), w), border=1)
             pdf.ln()
 
         tmp_path = os.path.join(tempfile.gettempdir(), f"informe_{result['report_type']}.pdf")
