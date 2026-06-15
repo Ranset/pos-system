@@ -84,7 +84,9 @@
       "Bash(.posvenv/Scripts/python.exe -c \"import pkg_resources; print\\('pkg_resources ok'\\)\")",
       "Bash(.posvenv/Scripts/python.exe -c \"import escpos.capabilities; print\\('escpos ok'\\)\")",
       "Bash(rm -f \"/c/Users/VIDEO/AppData/Local/CM Cash/server_config.json\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('views/reports.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('views/reports.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python _tmp_pdf_test.py)",
+      "Bash(./.posvenv/Scripts/python.exe _tmp_pdf_test.py)"
     ]
   }
 }
