@@ -954,6 +954,7 @@ def _build_lista_productos(db, start, end, target_date, cashier_id, payment_meth
         rows.append({
             "code": p.code,
             "name": p.name,
+            "description": p.description or "",
             "category": p.category.name if p.category else "Sin categoría",
             "stock": float(inv.quantity) if inv else 0.0,
             "min_stock": float(inv.min_stock) if inv else 0.0,
@@ -963,14 +964,15 @@ def _build_lista_productos(db, start, end, target_date, cashier_id, payment_meth
         })
 
     columns = [
-        {"key": "code", "label": "Código", "type": "text"},
-        {"key": "name", "label": "Producto", "type": "text"},
-        {"key": "category", "label": "Categoría", "type": "text"},
-        {"key": "stock", "label": "Stock", "type": "qty"},
-        {"key": "min_stock", "label": "Stock mín.", "type": "qty"},
-        {"key": "max_stock", "label": "Stock máx.", "type": "qty"},
-        {"key": "cost", "label": "Costo", "type": "currency"},
-        {"key": "price", "label": "Precio", "type": "currency"},
+        {"key": "code",        "label": "Código",      "type": "text"},
+        {"key": "name",        "label": "Producto",    "type": "text"},
+        {"key": "description", "label": "Descripción", "type": "text"},
+        {"key": "category",    "label": "Categoría",   "type": "text"},
+        {"key": "stock",       "label": "Stock",       "type": "qty"},
+        {"key": "min_stock",   "label": "Stock mín.",  "type": "qty"},
+        {"key": "max_stock",   "label": "Stock máx.",  "type": "qty"},
+        {"key": "cost",        "label": "Costo",       "type": "currency"},
+        {"key": "price",       "label": "Precio",      "type": "currency"},
     ]
     return columns, rows
 
