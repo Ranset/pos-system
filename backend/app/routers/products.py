@@ -74,7 +74,11 @@ def list_products(
         q = q.filter(Product.category_id == category_id)
     if search:
         term = f"%{search}%"
-        q = q.filter(Product.name.ilike(term) | Product.code.ilike(term))
+        q = q.filter(
+            Product.name.ilike(term) |
+            Product.code.ilike(term) |
+            Product.description.ilike(term)
+        )
     return q.order_by(Product.name).all()
 
 
