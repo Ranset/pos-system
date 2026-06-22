@@ -18,6 +18,8 @@ DEFAULT_CONFIGS = [
     ("store.tax_id", "", "RFC / NIT / RUC", "store"),
     ("store.logo_path", "", "Ruta del logo", "store"),
     ("store.footer_text", "¡Gracias por su compra!", "Texto pie de ticket", "store"),
+    ("store.qr_content", "", "Contenido del código QR del ticket (URL o texto)", "store"),
+    ("store.qr_cta_text", "¡Síguenos en nuestras redes!", "Título / llamada a la acción sobre el QR", "store"),
     # Fiscal
     ("fiscal.tax_name", "IVA", "Nombre del impuesto", "fiscal"),
     ("fiscal.default_tax_rate", "0.16", "Tasa de impuesto por defecto (0.16 = 16%)", "fiscal"),

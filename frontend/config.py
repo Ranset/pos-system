@@ -8,7 +8,7 @@ import appdirs
 
 load_dotenv()
 
-APP_VERSION: str = "1.1.0"
+APP_VERSION: str = "1.2.0"
 APP_TITLE: str = f"CM Cash v{APP_VERSION}"
 
 # Archivo donde se guarda la dirección del servidor configurada desde la UI.

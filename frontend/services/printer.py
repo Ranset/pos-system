@@ -40,6 +40,8 @@ class TicketPrinter:
         self.store_phone = config.get("store.phone", "")
         self.store_tax_id = config.get("store.tax_id", "")
         self.footer_text = config.get("store.footer_text", "¡Gracias por su compra!")
+        self.qr_content = (config.get("store.qr_content") or "").strip()
+        self.qr_cta_text = (config.get("store.qr_cta_text") or "").strip()
         self.char_width = 48 if self.paper_width >= 80 else 32
 
     def _get_printer(self):
@@ -173,7 +175,18 @@ class TicketPrinter:
             # ── Pie ────────────────────────────────────────────────────────
             ptext(div("=") + "\n")
             p.set(align="center")
-            ptext(self.footer_text + "\n\n\n")
+            ptext(self.footer_text + "\n")
+
+            # ── Código QR (llamado a la acción) ─────────────────────────────
+            if self.qr_content:
+                ptext("\n")
+                if self.qr_cta_text:
+                    p.set(align="center", bold=True)
+                    ptext(self.qr_cta_text + "\n")
+                    p.set(align="center", bold=False)
+                p.qr(self.qr_content, size=6, center=True)
+
+            ptext("\n\n")
             p.cut()
             p.close()
             return True
@@ -237,6 +250,22 @@ class TicketPrinter:
             lines.append(rrow("Cambio", change))
         lines += [div("="), self._center(self.footer_text), div("=")]
         return lines
+
+    def _qr_image(self, content: str):
+        """Genera la imagen del código QR (PIL.Image) para incrustar en el PDF."""
+        try:
+            import qrcode
+        except ImportError:
+            print("[PDF] qrcode no instalado. Ejecuta: pip install qrcode")
+            return None
+        try:
+            qr = qrcode.QRCode(border=1, box_size=8)
+            qr.add_data(content)
+            qr.make(fit=True)
+            return qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        except Exception as e:
+            print(f"[PDF] Error al generar código QR: {e}")
+            return None
 
     def _sanitize_line(self, line: str) -> str:
         """Convierte una línea a Latin-1 seguro para las fuentes core de fpdf2.
@@ -330,7 +359,8 @@ class TicketPrinter:
                   + len(items) * 2           # products
                   + 6                        # totals
                   + 4)                       # footer
-        ph = max(n_rows * lh + mg * 2 + 10, 90)
+        qr_extra_h = 40 if self.qr_content else 0   # título + código QR
+        ph = max(n_rows * lh + mg * 2 + 10 + qr_extra_h, 90)
 
         pdf = FPDF(unit="mm", format=(pw, ph))
         pdf.set_margins(mg, mg, mg)
@@ -435,6 +465,18 @@ class TicketPrinter:
         center(self.footer_text, size=8, h=5)
         gap()
 
+        # ── Código QR (llamado a la acción) ────────────────────────────────
+        if self.qr_content:
+            qr_img = self._qr_image(self.qr_content)
+            if qr_img:
+                if self.qr_cta_text:
+                    center(self.qr_cta_text, size=9, bold=True, h=5)
+                    gap(1)
+                qr_size = 28
+                pdf.image(qr_img, x=mg + (uw - qr_size) / 2, y=pdf.get_y(), w=qr_size, h=qr_size)
+                pdf.set_y(pdf.get_y() + qr_size)
+                gap(2)
+
         folio    = sale.get("folio", "ticket").replace("/", "-")
         tmp_path = os.path.join(tempfile.gettempdir(), f"ticket_{folio}.pdf")
         pdf.output(tmp_path)
@@ -530,6 +572,10 @@ class TicketPrinter:
             row("Cambio:", change)
         print(div("="))
         print(self._center(self.footer_text))
+        if self.qr_content:
+            if self.qr_cta_text:
+                print(self._center(self.qr_cta_text))
+            print(self._center(f"[QR] {self.qr_content}"))
         print(div("=") + "\n")
 
     def _build_close_lines(self, session: dict, summary: dict) -> list[str]:

@@ -21,6 +21,8 @@ CONFIG_GROUPS = [
             ("store.email",       "Correo electrónico",       "text",   ""),
             ("store.tax_id",      "RFC / NIT / RUC",          "text",   ""),
             ("store.footer_text", "Texto pie de ticket",      "text",   "¡Gracias por su compra!"),
+            ("store.qr_cta_text", "Título sobre el QR (llamada a la acción)", "text", "¡Síguenos en nuestras redes!"),
+            ("store.qr_content",  "Contenido del QR del ticket (URL o texto)", "text", ""),
         ],
     },
     {
@@ -171,6 +173,19 @@ def settings_view(page: ft.Page, app_state: dict):
         accordion.controls.clear()
         for group in CONFIG_GROUPS:
             field_controls = [_build_field(*f) for f in group["fields"]]
+            if group["category"] == "store":
+                field_controls.append(ft.Container(
+                    bgcolor=PRIMARY + "1A", border_radius=8,
+                    padding=ft.padding.all(10),
+                    content=ft.Row([
+                        ft.Icon(ft.icons.QR_CODE_2, color=PRIMARY_LT, size=16),
+                        ft.Text(
+                            "Si completas el contenido del QR, se imprimirá junto con su "
+                            "título al final de cada ticket de venta, debajo del pie de página.",
+                            size=12, color=ft.colors.WHITE54, expand=True,
+                        ),
+                    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
+                ))
             if group["category"] == "printer":
                 field_controls.insert(0, ft.Container(
                     bgcolor=PRIMARY + "1A", border_radius=8,
