@@ -179,14 +179,14 @@ class TicketPrinter:
 
             # ── Código QR (llamado a la acción) ─────────────────────────────
             if self.qr_content:
-                ptext("\n")
+                p.qr(self.qr_content, size=6, center=True)
+                # ptext("\n")
                 if self.qr_cta_text:
                     p.set(align="center", bold=True)
                     ptext(self.qr_cta_text + "\n")
                     p.set(align="center", bold=False)
-                p.qr(self.qr_content, size=6, center=True)
 
-            ptext("\n\n")
+            ptext("\n")
             p.cut()
             p.close()
             return True
