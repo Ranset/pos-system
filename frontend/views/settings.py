@@ -5,6 +5,7 @@ Incluye: configuración clave-valor y administración de cajas registradoras
 import flet as ft
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+from components import loading_icon_button
 
 
 # ── Grupos de configuración clave-valor ──────────────────────────────────────
@@ -36,6 +37,17 @@ CONFIG_GROUPS = [
             ("fiscal.currency_name",      "Código de moneda",                "text",   "MXN"),
             ("fiscal.decimal_places",     "Decimales en precios",            "number", "2"),
             ("fiscal.print_tax_breakdown","Desglosar impuesto en ticket",    "bool",   "true"),
+        ],
+    },
+    {
+        "title": "💳 Comisiones por Método de Pago",
+        "category": "fees",
+        "icon": ft.icons.PERCENT,
+        "fields": [
+            ("fee.commission_cash",     "Comisión Efectivo (%)",       "number", "0"),
+            ("fee.commission_card",     "Comisión Tarjeta (%)",        "number", "0"),
+            ("fee.commission_transfer", "Comisión Transferencia (%)",  "number", "0"),
+            ("fee.commission_mixed",    "Comisión Pago Mixto (%)",     "number", "0"),
         ],
     },
     {
@@ -182,6 +194,20 @@ def settings_view(page: ft.Page, app_state: dict):
                         ft.Text(
                             "Si completas el contenido del QR, se imprimirá junto con su "
                             "título al final de cada ticket de venta, debajo del pie de página.",
+                            size=12, color=ft.colors.WHITE54, expand=True,
+                        ),
+                    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
+                ))
+            if group["category"] == "fees":
+                field_controls.insert(0, ft.Container(
+                    bgcolor=PRIMARY + "1A", border_radius=8,
+                    padding=ft.padding.all(10),
+                    content=ft.Row([
+                        ft.Icon(ft.icons.INFO_OUTLINE, color=PRIMARY_LT, size=16),
+                        ft.Text(
+                            "Porcentaje que se suma (o resta, si el valor es negativo) al total "
+                            "de la venta según el método de pago usado para cobrar. Si el valor "
+                            "es 0, no se aplica ninguna comisión y no aparece en el ticket.",
                             size=12, color=ft.colors.WHITE54, expand=True,
                         ),
                     ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
@@ -775,10 +801,8 @@ def settings_view(page: ft.Page, app_state: dict):
                         ft.Text("Administración de Cajas", size=16, color=ft.colors.WHITE,
                                 weight=ft.FontWeight.BOLD, expand=True),
                         reg_status_text,
-                        ft.IconButton(
-                            ft.icons.REFRESH, icon_color=PRIMARY,
-                            on_click=refresh_registers, tooltip="Actualizar",
-                        ),
+                        loading_icon_button(page, ft.icons.REFRESH, refresh_registers,
+                                            icon_color=PRIMARY, tooltip="Actualizar"),
                         ft.ElevatedButton(
                             "Nueva caja", icon=ft.icons.ADD,
                             on_click=lambda _: open_register_dialog(),
@@ -1113,9 +1137,8 @@ def settings_view(page: ft.Page, app_state: dict):
                             on_click=reset_all_hotkeys,
                             style=ft.ButtonStyle(color=WARNING),
                         ),
-                        ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                      on_click=lambda _: load_hotkeys(),
-                                      tooltip="Recargar"),
+                        loading_icon_button(page, ft.icons.REFRESH, lambda _: load_hotkeys(),
+                                            icon_color=PRIMARY, tooltip="Recargar"),
                     ]),
                 ),
                 ft.Container(
@@ -1398,8 +1421,8 @@ def settings_view(page: ft.Page, app_state: dict):
                         ft.Text("Administración de Base de Datos", size=16,
                                 color=ft.colors.WHITE, weight=ft.FontWeight.BOLD, expand=True),
                         last_op_text,
-                        ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                      on_click=load_db_stats, tooltip="Actualizar estadísticas"),
+                        loading_icon_button(page, ft.icons.REFRESH, load_db_stats,
+                                            icon_color=PRIMARY, tooltip="Actualizar estadísticas"),
                     ]),
                 ),
                 # Panel de estadísticas

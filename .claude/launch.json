@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-web",
+      "runtimeExecutable": "frontend/.posvenv/Scripts/flet.exe",
+      "runtimeArgs": ["run", "--web", "--port", "8551", "frontend/main.py"],
+      "port": 8551
+    }
+  ]
+}

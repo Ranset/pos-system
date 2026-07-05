@@ -27,6 +27,11 @@ DEFAULT_CONFIGS = [
     ("fiscal.currency_symbol", "$", "Símbolo de moneda", "fiscal"),
     ("fiscal.currency_name", "MXN", "Nombre de moneda", "fiscal"),
     ("fiscal.decimal_places", "2", "Decimales en precios", "fiscal"),
+    # Comisiones por método de pago (%, puede ser negativo; 0 = sin comisión)
+    ("fee.commission_cash",     "0", "Comisión efectivo (%)",       "fees"),
+    ("fee.commission_card",     "0", "Comisión tarjeta (%)",        "fees"),
+    ("fee.commission_transfer", "0", "Comisión transferencia (%)",  "fees"),
+    ("fee.commission_mixed",    "0", "Comisión pago mixto (%)",     "fees"),
     # Impresora
     ("printer.enabled", "false", "Habilitar impresión automática", "printer"),
     ("printer.type", "usb", "Tipo: usb / serial / network", "printer"),

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
-from ..models import Sale, SaleItem, SaleStatus, PaymentMethod, Product, Inventory, InventoryMovement, CashSession
+from ..models import Sale, SaleItem, SaleStatus, PaymentMethod, Product, Inventory, InventoryMovement, CashSession, AppConfig
 from ..schemas import SaleOut, SaleCreate
 from ..services.auth import require_cashier, require_manager, get_current_user
 
@@ -28,6 +28,27 @@ def _generate_folio(db: Session) -> str:
         except Exception:
             seq = 1
     return f"{prefix}-{seq:04d}"
+
+
+COMMISSION_CONFIG_KEYS = {
+    PaymentMethod.CASH:     "fee.commission_cash",
+    PaymentMethod.CARD:     "fee.commission_card",
+    PaymentMethod.TRANSFER: "fee.commission_transfer",
+    PaymentMethod.MIXED:    "fee.commission_mixed",
+}
+
+
+def _get_commission_pct(db: Session, payment_method: PaymentMethod) -> Decimal:
+    key = COMMISSION_CONFIG_KEYS.get(payment_method)
+    if not key:
+        return Decimal("0")
+    cfg = db.query(AppConfig).filter(AppConfig.key == key).first()
+    if not cfg or not cfg.value:
+        return Decimal("0")
+    try:
+        return Decimal(str(cfg.value))
+    except Exception:
+        return Decimal("0")
 
 
 @router.post("/", response_model=SaleOut, status_code=201)
@@ -80,6 +101,13 @@ def create_sale(
         })
 
     total = subtotal + tax_total - data.discount_amount
+
+    # Comisión por procesar el pago, según el método usado (configurable en
+    # Configuración → Comisiones; puede ser positiva o negativa; 0 = sin comisión).
+    commission_pct = _get_commission_pct(db, data.payment_method)
+    commission_amount = (total * commission_pct / 100) if commission_pct else Decimal("0")
+    total += commission_amount
+
     change = data.payment_amount - total
 
     if change < 0 and data.payment_amount > 0:
@@ -116,6 +144,8 @@ def create_sale(
             payment_amount=data.payment_amount,
             change_amount=max(change, Decimal("0")),
             cash_tendered=cash_tendered,
+            commission_pct=float(commission_pct),
+            commission_amount=commission_amount,
             status=SaleStatus.COMPLETED,
             notes=data.notes,
         )

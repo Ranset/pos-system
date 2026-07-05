@@ -4,6 +4,7 @@ Vista de Gestión de Usuarios – Roles y Permisos
 import flet as ft
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+from components import loading_icon_button
 
 ROLE_LABELS = {"admin": "Administrador", "manager": "Gerente", "cashier": "Cajero"}
 ROLE_COLORS = {"admin": "#E53935", "manager": "#FB8C00", "cashier": "#43A047"}
@@ -516,8 +517,8 @@ def users_view(page: ft.Page, app_state: dict):
                     content=ft.Row(controls=[
                         search_field,
                         role_dropdown,
-                        ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                      on_click=load_users, tooltip="Actualizar"),
+                        loading_icon_button(page, ft.icons.REFRESH, load_users,
+                                            icon_color=PRIMARY, tooltip="Actualizar"),
                     ], spacing=10),
                 ),
                 ft.Container(

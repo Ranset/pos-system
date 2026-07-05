@@ -5,6 +5,7 @@ import flet as ft
 from datetime import date, datetime, timedelta
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+from components import loading_icon_button
 
 
 MONTH_NAMES = [
@@ -423,8 +424,8 @@ def reports_view(page: ft.Page, app_state: dict):
                                     ft.Text("Datos de ventas agrupados por mes",
                                             size=11, color=ft.colors.WHITE54),
                                 ]),
-                                ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                              on_click=load_monthly, tooltip="Actualizar"),
+                                loading_icon_button(page, ft.icons.REFRESH, load_monthly,
+                                                    icon_color=PRIMARY, tooltip="Actualizar"),
                                 dash_count_switch,
                                 ft.IconButton(ft.icons.CHEVRON_LEFT, icon_color=ft.colors.WHITE54,
                                               on_click=_year_prev, tooltip="Año anterior"),
@@ -714,6 +715,7 @@ def reports_view(page: ft.Page, app_state: dict):
     informe_cashier_dropdown.value = ""
 
     informe_filter_area = ft.Row(spacing=10, wrap=True, vertical_alignment=ft.CrossAxisAlignment.END)
+    informe_loading_ring = ft.ProgressRing(width=20, height=20, color=PRIMARY, visible=False)
     informe_results_view = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
     informe_title_text = ft.Text("Seleccione un informe", size=15, color=ft.colors.WHITE,
                                   weight=ft.FontWeight.BOLD)
@@ -828,6 +830,7 @@ def reports_view(page: ft.Page, app_state: dict):
                               on_click=_generate_informe,
                               style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE))
         )
+        informe_filter_area.controls.append(informe_loading_ring)
         informe_filter_area.controls.append(
             ft.OutlinedButton("PDF", icon=ft.icons.PICTURE_AS_PDF, on_click=_export_informe_pdf)
         )
@@ -917,6 +920,8 @@ def reports_view(page: ft.Page, app_state: dict):
         if "payment_method" in filters and informe_payment_dropdown.value:
             params["payment_method"] = informe_payment_dropdown.value
 
+        informe_loading_ring.visible = True
+        page.update()
         try:
             result = api.get_custom_report(item["key"], **params)
             informe_state["result"] = result
@@ -925,6 +930,9 @@ def reports_view(page: ft.Page, app_state: dict):
             _render_informe_result(result)
         except APIError as ex:
             _show_snack(str(ex))
+        finally:
+            informe_loading_ring.visible = False
+            page.update()
 
     # ── Exportación ────────────────────────────────────────────────────────
 

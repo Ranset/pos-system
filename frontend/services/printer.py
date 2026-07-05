@@ -146,13 +146,15 @@ class TicketPrinter:
             ptext(div() + "\n")
 
             # ── Totales ────────────────────────────────────────────────────
-            subtotal = float(sale.get("subtotal", 0))
-            tax_amt  = float(sale.get("tax_amount", 0))
-            disc_amt = float(sale.get("discount_amount", 0))
-            total    = float(sale.get("total", 0))
-            paid     = float(sale.get("payment_amount", 0))
-            change   = float(sale.get("change_amount", 0))
-            method   = sale.get("payment_method", "cash")
+            subtotal    = float(sale.get("subtotal", 0))
+            tax_amt     = float(sale.get("tax_amount", 0))
+            disc_amt    = float(sale.get("discount_amount", 0))
+            comm_amt    = float(sale.get("commission_amount", 0) or 0)
+            comm_pct    = float(sale.get("commission_pct", 0) or 0)
+            total       = float(sale.get("total", 0))
+            paid        = float(sale.get("payment_amount", 0))
+            change      = float(sale.get("change_amount", 0))
+            method      = sale.get("payment_method", "cash")
             method_map = {"cash": "Efectivo", "card": "Tarjeta",
                           "transfer": "Transferencia", "mixed": "Mixto"}
 
@@ -167,6 +169,9 @@ class TicketPrinter:
                 total_row(f"{self.tax_name}:", tax_amt)
             if disc_amt > 0:
                 total_row("Descuento:", disc_amt, prefix="-")
+            if comm_amt:
+                total_row(f"Comision {method_map.get(method, method)} ({comm_pct:g}%):",
+                          abs(comm_amt), prefix="-" if comm_amt < 0 else "+")
             total_row("TOTAL:", total, bold=True)
             total_row(f"Pago ({method_map.get(method, method)}):", paid)
             if change > 0:
@@ -357,7 +362,7 @@ class TicketPrinter:
         # Estimar altura de página
         n_rows = (9                          # header
                   + len(items) * 2           # products
-                  + 6                        # totals
+                  + 7                        # totals (incl. comisión)
                   + 4)                       # footer
         qr_extra_h = 40 if self.qr_content else 0   # título + código QR
         ph = max(n_rows * lh + mg * 2 + 10 + qr_extra_h, 90)
@@ -437,6 +442,8 @@ class TicketPrinter:
         subtotal = float(sale.get("subtotal", 0))
         tax_amt  = float(sale.get("tax_amount", 0))
         disc_amt = float(sale.get("discount_amount", 0))
+        comm_amt = float(sale.get("commission_amount", 0) or 0)
+        comm_pct = float(sale.get("commission_pct", 0) or 0)
         total    = float(sale.get("total", 0))
         paid     = float(sale.get("payment_amount", 0))
         change   = float(sale.get("change_amount", 0))
@@ -449,6 +456,10 @@ class TicketPrinter:
             lr(f"{self.tax_name}:", f"{cur}{tax_amt:.2f}", size=8, h=slh)
         if disc_amt > 0:
             lr("Descuento:", f"-{cur}{disc_amt:.2f}", size=8, h=slh)
+        if comm_amt:
+            sign = "-" if comm_amt < 0 else "+"
+            lr(f"Comisión {method_map.get(method, method)} ({comm_pct:g}%):",
+               f"{sign}{cur}{abs(comm_amt):.2f}", size=8, h=slh)
         gap(1)
         lr("TOTAL:", f"{cur}{total:.2f}", size=11, bold=True, h=6)
         gap(1)
@@ -550,6 +561,8 @@ class TicketPrinter:
         subtotal = float(sale.get("subtotal", 0))
         tax_amt  = float(sale.get("tax_amount", 0))
         disc_amt = float(sale.get("discount_amount", 0))
+        comm_amt = float(sale.get("commission_amount", 0) or 0)
+        comm_pct = float(sale.get("commission_pct", 0) or 0)
         total    = float(sale.get("total", 0))
         paid     = float(sale.get("payment_amount", 0))
         change   = float(sale.get("change_amount", 0))
@@ -566,6 +579,9 @@ class TicketPrinter:
             row(f"{self.tax_name}:", tax_amt)
         if disc_amt > 0:
             row("Descuento:", disc_amt, prefix="-")
+        if comm_amt:
+            row(f"Comisión {method_map.get(method, method)} ({comm_pct:g}%):",
+                abs(comm_amt), prefix="-" if comm_amt < 0 else "+")
         row("TOTAL:", total)
         row(f"Pago ({method_map.get(method, method)}):", paid)
         if change > 0:

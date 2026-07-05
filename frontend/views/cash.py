@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from views.pos import _fmt_dt   # reutilizar el helper de conversión UTC→local
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+from components import loading_icon_button
 
 
 def cash_view(page: ft.Page, app_state: dict):
@@ -118,6 +119,8 @@ def cash_view(page: ft.Page, app_state: dict):
         def make_move(session_id):    return lambda _: open_movement_dialog(session_id)
         def make_summary(session_id): return lambda _: open_session_summary(session_id)
         def make_use_pos(sess):       return lambda _: _set_active_session(sess)
+        def make_transfer(session_id, cashier_id, cashier_name):
+            return lambda _: open_transfer_dialog(session_id, cashier_id, cashier_name)
 
         # Indicador de caja activa en POS
         pos_badge = ft.Container(
@@ -197,6 +200,13 @@ def cash_view(page: ft.Page, app_state: dict):
                         style=ft.ButtonStyle(bgcolor=WARNING, color=ft.colors.BLACK),
                     ),
                     use_pos_btn,
+                    ft.ElevatedButton(
+                        "Transferir", icon=ft.icons.SWAP_HORIZONTAL_CIRCLE,
+                        on_click=make_transfer(sid, cash.get("id"), cash.get("full_name", "")),
+                        visible=is_mgr,
+                        style=ft.ButtonStyle(bgcolor=BG_SURFACE, color=WARNING,
+                                             side=ft.BorderSide(1, WARNING)),
+                    ),
                     ft.ElevatedButton(
                         "Cerrar caja", icon=ft.icons.LOCK,
                         on_click=make_close(sid),
@@ -744,6 +754,24 @@ def cash_view(page: ft.Page, app_state: dict):
             except APIError as ex:
                 _show_snack(str(ex), ERROR)
 
+        def reprint_close_ticket(_):
+            try:
+                from services.printer import TicketPrinter
+                tp = TicketPrinter(api.get_config_map())
+                if not tp.enabled:
+                    _show_snack("⚠ La impresión automática está deshabilitada (Configuración → Impresora y Cajón)", WARNING)
+                    return
+                sess_for_print = api.get_session(session_id)
+                summary_for_print = api.get_session_report(session_id)
+                if tp.print_session_close(sess_for_print, summary_for_print):
+                    _show_snack("✅ Ticket de cierre reimpreso")
+                else:
+                    _show_snack(f"⚠ No se pudo imprimir: {tp.last_error}", WARNING)
+            except APIError as ex:
+                _show_snack(str(ex), ERROR)
+            except Exception as ex:
+                _show_snack(f"Error impresora: {ex}", ERROR)
+
         def download_close_pdf(_):
             try:
                 from services.printer import TicketPrinter
@@ -776,6 +804,12 @@ def cash_view(page: ft.Page, app_state: dict):
             actions=[
                 ft.TextButton("Cerrar sin guardar",
                               on_click=lambda _: setattr(count_dlg,'open',False) or page.update()),
+                ft.ElevatedButton(
+                    "Reimprimir ticket", icon=ft.icons.PRINT,
+                    on_click=reprint_close_ticket,
+                    style=ft.ButtonStyle(bgcolor=BG_SURFACE, color=PRIMARY_LT,
+                                         side=ft.BorderSide(1, PRIMARY)),
+                ),
                 ft.ElevatedButton(
                     "📄 PDF cierre", icon=ft.icons.PICTURE_AS_PDF,
                     on_click=download_close_pdf,
@@ -850,6 +884,69 @@ def cash_view(page: ft.Page, app_state: dict):
                 ft.TextButton("Cancelar", on_click=lambda _: setattr(dlg,'open',False) or page.update()),
                 ft.ElevatedButton("Registrar", icon=ft.icons.SAVE, on_click=save,
                                   style=ft.ButtonStyle(bgcolor=WARNING, color=ft.colors.BLACK)),
+            ],
+        )
+        page.dialog = dlg; dlg.open = True; page.update()
+
+    # ─── Diálogo: Transferir propiedad de la caja ────────────────────────────
+    # Solo visible para gerentes/administradores (botón condicionado con is_mgr).
+
+    ROLE_LABELS = {"admin": "Administrador", "manager": "Gerente", "cashier": "Cajero"}
+
+    def open_transfer_dialog(session_id: int, current_cashier_id: int, current_cashier_name: str):
+        try:
+            users = api.get_users()
+        except APIError as ex:
+            _show_snack(str(ex), ERROR)
+            return
+
+        candidates = [u for u in users if u.get("is_active", True) and u["id"] != current_cashier_id]
+        if not candidates:
+            _show_snack("No hay otros usuarios activos disponibles para transferir la caja", WARNING)
+            return
+
+        f_user = ft.Dropdown(
+            label="Transferir a *",
+            options=[
+                ft.dropdown.Option(
+                    str(u["id"]),
+                    f"{u['full_name']} ({ROLE_LABELS.get(u.get('role',''), u.get('role',''))})",
+                )
+                for u in candidates
+            ],
+        )
+        f_reason = ft.TextField(label="Motivo (opcional)",
+                                hint_text="Ej: Cambio de turno, ausencia del cajero...")
+        err_text = ft.Text("", color=ERROR, size=12)
+
+        def save(e):
+            if not f_user.value:
+                err_text.value = "Selecciona el usuario destino"; page.update(); return
+            try:
+                api.transfer_session(session_id, int(f_user.value), f_reason.value.strip() or None)
+                dlg.open = False; page.update()
+                new_name = next((u["full_name"] for u in candidates if str(u["id"]) == f_user.value), "")
+                _show_snack(f"✅ Caja transferida a {new_name}")
+                load_data()
+            except APIError as ex:
+                err_text.value = str(ex); page.update()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.icons.SWAP_HORIZONTAL_CIRCLE, color=PRIMARY),
+                ft.Text("Transferir propiedad de la caja", weight=ft.FontWeight.BOLD),
+            ], spacing=8),
+            content=ft.Column(spacing=10, tight=True, width=360, controls=[
+                ft.Text(f"Caja actualmente a nombre de: {current_cashier_name}",
+                        color=ft.colors.WHITE70, size=12),
+                f_user, f_reason, err_text,
+            ]),
+            actions=[
+                ft.TextButton("Cancelar",
+                              on_click=lambda _: setattr(dlg, "open", False) or page.update()),
+                ft.ElevatedButton("Transferir", icon=ft.icons.SWAP_HORIZ, on_click=save,
+                                  style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE)),
             ],
         )
         page.dialog = dlg; dlg.open = True; page.update()
@@ -941,8 +1038,8 @@ def cash_view(page: ft.Page, app_state: dict):
                             content=ft.Row([
                                 ft.Text("Control de Cajas", size=18, color=ft.colors.WHITE,
                                         weight=ft.FontWeight.BOLD, expand=True),
-                                ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                              on_click=load_data, tooltip="Actualizar"),
+                                loading_icon_button(page, ft.icons.REFRESH, load_data,
+                                                    icon_color=PRIMARY, tooltip="Actualizar"),
                             ]),
                         ),
                         ft.Container(
@@ -965,8 +1062,8 @@ def cash_view(page: ft.Page, app_state: dict):
                                 ft.Text("Historial de Sesiones", size=18, color=ft.colors.WHITE,
                                         weight=ft.FontWeight.BOLD, expand=True),
                                 status_text,
-                                ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                              on_click=load_data, tooltip="Actualizar"),
+                                loading_icon_button(page, ft.icons.REFRESH, load_data,
+                                                    icon_color=PRIMARY, tooltip="Actualizar"),
                             ]),
                         ),
                         ft.Container(expand=True, padding=ft.padding.symmetric(horizontal=12),

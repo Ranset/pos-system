@@ -216,6 +216,8 @@ class Sale(Base):
     payment_amount = Column(DECIMAL(10, 2), nullable=False)    # Monto total recibido
     change_amount  = Column(DECIMAL(10, 2), default=0.00)      # Cambio entregado
     cash_tendered  = Column(DECIMAL(10, 2), default=0.00)      # Parte EN EFECTIVO (crítico para cierre)
+    commission_pct    = Column(Float, default=0.0)             # % comisión aplicada según método de pago
+    commission_amount = Column(DECIMAL(10, 2), default=0.00)   # Monto de comisión (puede ser negativo)
     # status: String en lugar de Enum para evitar conflictos de case en MySQL.
     # Los valores válidos se definen en SaleStatus; se almacenan en minúsculas.
     status = Column(String(30), default=SaleStatus.COMPLETED.value)

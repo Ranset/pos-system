@@ -6,6 +6,7 @@ import flet as ft
 from datetime import date
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+from components import loading_icon_button
 from .pos import _fmt_dt
 
 
@@ -784,6 +785,12 @@ def sales_view(page: ft.Page, app_state: dict):
                             ft.Text(f"-{currency}{float(sale.get('discount_amount',0)):.2f}",
                                     color=ft.colors.WHITE)],
                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN) if float(sale.get("discount_amount", 0)) else ft.Container(),
+                    ft.Row([ft.Text(f"Comisión {method} ({float(sale.get('commission_pct',0) or 0):g}%):",
+                                    color=ft.colors.WHITE70),
+                            ft.Text(f"{'-' if float(sale.get('commission_amount',0) or 0) < 0 else '+'}"
+                                    f"{currency}{abs(float(sale.get('commission_amount',0) or 0)):.2f}",
+                                    color=ft.colors.WHITE)],
+                           alignment=ft.MainAxisAlignment.SPACE_BETWEEN) if float(sale.get("commission_amount", 0) or 0) else ft.Container(),
                     ft.Row([ft.Text("TOTAL ORIGINAL:", color=ft.colors.WHITE,
                                    weight=ft.FontWeight.BOLD),
                             ft.Text(f"{currency}{total_original:.2f}",
@@ -864,8 +871,8 @@ def sales_view(page: ft.Page, app_state: dict):
                         on_click=load_sales,
                         style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE),
                     ),
-                    ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                  on_click=load_sales, tooltip="Actualizar"),
+                    loading_icon_button(page, ft.icons.REFRESH, load_sales,
+                                        icon_color=PRIMARY, tooltip="Actualizar"),
                 ], spacing=10),
             ),
             ft.Container(

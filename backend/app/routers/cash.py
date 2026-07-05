@@ -4,22 +4,9 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
-from ..models import CashSession, CashRegister, CashMovement, Sale, SaleStatus, SessionStatus
+from ..models import CashSession, CashRegister, CashMovement, Sale, SaleStatus, SessionStatus, User
 from ..schemas import (
-    CashSessionOut, OpenCashSession, CloseCashSession,
-    CashMovementCreate, CashMovementOut, CashRegisterOut,
-)
-from ..services.auth import require_cashier, require_manager, require_admin, get_current_user
-
-from typing import List
-from decimal import Decimal
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, joinedload
-from ..database import get_db
-from ..models import CashSession, CashRegister, CashMovement, Sale, SaleStatus, SessionStatus
-from ..schemas import (
-    CashSessionOut, OpenCashSession, CloseCashSession,
+    CashSessionOut, OpenCashSession, CloseCashSession, TransferCashSession,
     CashMovementCreate, CashMovementOut, CashRegisterOut,
     CashRegisterCreate, CashRegisterUpdate,
 )
@@ -212,6 +199,52 @@ def close_session(
     session.closed_at = datetime.utcnow()
     if data.notes:
         session.notes = (session.notes or "") + f" | Cierre: {data.notes}"
+
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/transfer", response_model=CashSessionOut)
+def transfer_session(
+    session_id: int,
+    data: TransferCashSession,
+    db: Session = Depends(get_db),
+    current=Depends(require_manager),
+):
+    """Transfiere la propiedad de una caja abierta a otro usuario.
+    Solo gerentes/administradores pueden hacerlo (visible únicamente para
+    ellos también en el frontend)."""
+    session = (
+        db.query(CashSession)
+        .options(
+            joinedload(CashSession.register),
+            joinedload(CashSession.cashier),
+            joinedload(CashSession.movements).joinedload(CashMovement.user),
+        )
+        .filter(CashSession.id == session_id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(404, "Sesión no encontrada")
+    if session.status != SessionStatus.OPEN:
+        raise HTTPException(400, "Solo se puede transferir una caja abierta")
+
+    new_cashier = db.query(User).filter(
+        User.id == data.new_cashier_id, User.is_active == True
+    ).first()
+    if not new_cashier:
+        raise HTTPException(404, "El usuario destino no existe o está inactivo")
+    if new_cashier.id == session.cashier_id:
+        raise HTTPException(400, "La caja ya pertenece a ese usuario")
+
+    previous_cashier_name = session.cashier.full_name
+    note = (f"Transferida de {previous_cashier_name} a {new_cashier.full_name} "
+            f"por {current.full_name} el {datetime.utcnow().strftime('%d/%m/%Y %H:%M')}")
+    if data.reason:
+        note += f" — Motivo: {data.reason}"
+    session.notes = (session.notes + " | " + note) if session.notes else note
+    session.cashier = new_cashier   # actualiza cashier_id y el objeto relacionado en caché
 
     db.commit()
     db.refresh(session)

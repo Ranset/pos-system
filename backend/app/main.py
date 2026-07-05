@@ -46,6 +46,16 @@ def _run_schema_migrations():
             "sql":  "ALTER TABLE sales MODIFY COLUMN status VARCHAR(30) NOT NULL DEFAULT 'completed'",
         },
         {
+            "name": "sales.commission_pct",
+            "sql":  "ALTER TABLE sales ADD COLUMN commission_pct "
+                    "FLOAT NOT NULL DEFAULT 0 AFTER cash_tendered",
+        },
+        {
+            "name": "sales.commission_amount",
+            "sql":  "ALTER TABLE sales ADD COLUMN commission_amount "
+                    "DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER commission_pct",
+        },
+        {
             "name": "sale_returns table",
             "sql":  ("CREATE TABLE IF NOT EXISTS sale_returns ("
                      "id INT AUTO_INCREMENT PRIMARY KEY,"

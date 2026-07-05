@@ -7,6 +7,7 @@ from decimal import Decimal
 from datetime import datetime, timezone
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+from components import loading_icon_button
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1351,9 +1352,10 @@ def pos_view(page: ft.Page, app_state: dict):
                                  search_field,
                                  ft.IconButton(ft.icons.QR_CODE_SCANNER, icon_color=PRIMARY,
                                                on_click=search_or_scan, tooltip="Escanear / Buscar"),
-                                 ft.IconButton(ft.icons.REFRESH, icon_color=ft.colors.WHITE38,
-                                               on_click=lambda _: reload_current(),
-                                               tooltip="Recargar catálogo de productos"),
+                                 loading_icon_button(
+                                     page, ft.icons.REFRESH, lambda _: reload_current(),
+                                     icon_color=ft.colors.WHITE38,
+                                     tooltip="Recargar catálogo de productos"),
                                  session_badge,
                                  change_session_btn,
                              ])),
@@ -1538,6 +1540,11 @@ def pos_view(page: ft.Page, app_state: dict):
         total_display  = ft.Text(f"TOTAL  {currency}{float(total_val):.2f}",
                                  size=20, weight=ft.FontWeight.BOLD,
                                  color=ft.colors.WHITE, text_align=ft.TextAlign.CENTER)
+        commission_row = ft.Row(
+            [ft.Text("Comisión:", color=WARNING, size=13),
+             ft.Text("", color=WARNING, size=13, weight=ft.FontWeight.BOLD)],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN, visible=False,
+        )
 
         # Para pago mixto
         f_card_amount = ft.TextField(
@@ -1572,9 +1579,42 @@ def pos_view(page: ft.Page, app_state: dict):
                 disc = Decimal("0")
             return max(total_val - disc, Decimal("0"))
 
+        # ── Comisión por método de pago (Configuración → Comisiones) ──────────
+        METHOD_LABELS = {"cash": "Efectivo", "card": "Tarjeta",
+                         "transfer": "Transferencia", "mixed": "Mixto"}
+
+        def _commission_pct(method: str) -> Decimal:
+            return _dec(cfg.get(f"fee.commission_{method}", "0") or "0")
+
+        def _get_commission_amount(base_total: Decimal, method: str) -> Decimal:
+            pct = _commission_pct(method)
+            return (base_total * pct / 100) if pct else Decimal("0")
+
+        def _get_final_total(base_total: Decimal = None, method: str = None) -> Decimal:
+            if base_total is None:
+                base_total = _get_total_with_discount()
+            if method is None:
+                method = pay_state["method"]
+            commission_amt = _get_commission_amount(base_total, method)
+            return max(base_total + commission_amt, Decimal("0"))
+
         def _update_change():
-            total_d = _get_total_with_discount()
+            base_total = _get_total_with_discount()
             method  = pay_state["method"]
+            commission_amt = _get_commission_amount(base_total, method)
+            total_d = max(base_total + commission_amt, Decimal("0"))
+
+            if commission_amt != 0:
+                sign = "+" if commission_amt >= 0 else "-"
+                commission_row.controls[0].value = (
+                    f"Comisión ({METHOD_LABELS.get(method, method)} "
+                    f"{_commission_pct(method):g}%):"
+                )
+                commission_row.controls[1].value = f"{sign}{currency}{abs(float(commission_amt)):.2f}"
+                commission_row.visible = True
+            else:
+                commission_row.visible = False
+            total_display.value = f"TOTAL  {currency}{float(total_d):.2f}"
             if method == "cash":
                 try:
                     paid = _dec(pay_state["amount_str"] or "0")
@@ -1660,7 +1700,7 @@ def pos_view(page: ft.Page, app_state: dict):
             _update_change()
 
         def exact_amount():
-            total_d = _get_total_with_discount()
+            total_d = _get_final_total()
             pay_state["amount_str"] = f"{float(total_d):.2f}"
             _update_change()
 
@@ -1805,6 +1845,7 @@ def pos_view(page: ft.Page, app_state: dict):
                         ft.Text(f"{currency}{float(total_val):.2f}", color=PRIMARY_LT,
                                 weight=ft.FontWeight.BOLD, size=16)],
                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                commission_row,
                 ft.Divider(color=ft.colors.WHITE12),
                 ft.Text("👤 Datos del cliente", size=13, weight=ft.FontWeight.W_600,
                         color=ft.colors.WHITE70),
@@ -1848,9 +1889,10 @@ def pos_view(page: ft.Page, app_state: dict):
 
         # ── Acción: confirmar venta ───────────────────────────────────────────
         def confirm_sale(e):
-            total_d = _get_total_with_discount()
+            base_total = _get_total_with_discount()
             method  = pay_state["method"]
-            discount_amount = max(total_val - total_d, Decimal("0"))
+            discount_amount = max(total_val - base_total, Decimal("0"))
+            total_d = _get_final_total(base_total, method)   # incluye comisión del método
 
             # Validar monto
             if method == "cash":
@@ -2122,15 +2164,22 @@ def pos_view(page: ft.Page, app_state: dict):
             ticket_row(f"  {qty:.0f} × {cur}{price:.2f}" + (f"  -{disc:.0f}%" if disc else ""),
                        color=ft.colors.BLACK54)
 
+        method_labels = {"cash":"Efectivo","card":"Tarjeta","transfer":"Transferencia","mixed":"Mixto"}
+        commission_amt = float(last_sale.get("commission_amount", 0) or 0)
+        commission_pct = float(last_sale.get("commission_pct", 0) or 0)
+
         ticket_row("", divider=True)
         ticket_row("Subtotal:", f"{cur}{float(last_sale.get('subtotal',0)):.2f}")
         if float(last_sale.get("tax_amount",0)) > 0:
             ticket_row(f"{tax_name}:", f"{cur}{float(last_sale.get('tax_amount',0)):.2f}")
         if float(last_sale.get("discount_amount",0)) > 0:
             ticket_row("Descuento:", f"-{cur}{float(last_sale.get('discount_amount',0)):.2f}")
+        if commission_amt:
+            sign = "-" if commission_amt < 0 else "+"
+            ticket_row(f"Comisión {method_labels.get(method, method)} ({commission_pct:g}%):",
+                       f"{sign}{cur}{abs(commission_amt):.2f}")
         ticket_row("TOTAL:", f"{cur}{total:.2f}", bold=True)
         ticket_row("", divider=True)
-        method_labels = {"cash":"Efectivo","card":"Tarjeta","transfer":"Transferencia","mixed":"Mixto"}
         ticket_row(f"Pago ({method_labels.get(method, method)}):",
                    f"{cur}{float(last_sale.get('payment_amount',0)):.2f}")
         if change > 0:

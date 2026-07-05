@@ -4,6 +4,7 @@ Vista de Gestión de Productos y Categorías
 import flet as ft
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+from components import loading_icon_button
 
 
 def products_view(page: ft.Page, app_state: dict):
@@ -836,8 +837,8 @@ def products_view(page: ft.Page, app_state: dict):
                                     search_field,
                                     cat_dropdown,
                                     show_inactive_switch,
-                                    ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                                  on_click=load_products, tooltip="Actualizar"),
+                                    loading_icon_button(page, ft.icons.REFRESH, load_products,
+                                                        icon_color=PRIMARY, tooltip="Actualizar"),
                                     ft.OutlinedButton(
                                         "Importar Excel", icon=ft.icons.UPLOAD_FILE,
                                         on_click=open_import_dialog,

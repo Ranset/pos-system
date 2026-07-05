@@ -514,14 +514,22 @@ def _users_map(db: Session, ids) -> dict:
 
 def _build_productos(db, start, end, target_date, cashier_id, payment_method):
     start_dt, end_dt = _range_dt(start, end)
-    sales = _valid_sales_query(db, start_dt, end_dt, cashier_id, payment_method).all()
+    sales = (
+        _valid_sales_query(db, start_dt, end_dt, cashier_id, payment_method)
+        .options(joinedload(Sale.items).joinedload(SaleItem.product).joinedload(Product.category))
+        .all()
+    )
 
     totals: dict = {}
     for s in sales:
         for it in s.items:
             key = (it.product_code, it.product_name)
-            row = totals.setdefault(key, {"code": it.product_code, "name": it.product_name,
-                                          "qty": 0.0, "total": Decimal("0")})
+            row = totals.setdefault(key, {
+                "code": it.product_code, "name": it.product_name,
+                "category": "Sin categoría", "qty": 0.0, "total": Decimal("0"),
+            })
+            if it.product and it.product.category:
+                row["category"] = it.product.category.name
             row["qty"] += it.quantity
             row["total"] += it.subtotal
 
@@ -532,6 +540,7 @@ def _build_productos(db, start, end, target_date, cashier_id, payment_method):
     columns = [
         {"key": "code", "label": "Código", "type": "text"},
         {"key": "name", "label": "Producto", "type": "text"},
+        {"key": "category", "label": "Categoría", "type": "text"},
         {"key": "qty", "label": "Cantidad", "type": "qty"},
         {"key": "total", "label": "Total", "type": "currency"},
     ]

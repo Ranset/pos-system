@@ -161,13 +161,17 @@ def main(page: ft.Page):
         # Restaurar handler global de teclado al salir del POS u otra vista
         page.on_keyboard_event = on_keyboard
         current_view_index["val"] = index
+        # Mostrar overlay de carga: construir la vista implica llamadas
+        # bloqueantes a la API (listar productos, categorías, etc.) que de
+        # otro modo dejarían la pantalla anterior aparentando estar congelada.
+        show_loading(True)
         builder = VIEW_BUILDERS.get(index, lambda: ft.Text("Vista no encontrada"))
         content_area.content = builder()
         # Refrescar info de sesión al ir a POS o Caja
         if index in (VIEW_POS, VIEW_CASH):
             _load_session_info()
         _rebuild_nav()
-        page.update()
+        show_loading(False)
 
     def on_nav_change(index: int):
         navigate_to(index)
@@ -271,6 +275,20 @@ def main(page: ft.Page):
 
     # ── Arranque ──────────────────────────────────────────────────────────────
 
+    # Mostrar un indicador de carga inmediatamente: la ventana está en blanco
+    # y check_backend() puede tardar hasta 5s (timeout) si el servidor no responde.
+    page.add(ft.Container(
+        expand=True, bgcolor=BG_DARK, alignment=ft.alignment.center,
+        content=ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=16,
+            controls=[
+                ft.ProgressRing(color=PRIMARY, width=42, height=42),
+                ft.Text("Conectando con el servidor...", color=ft.colors.WHITE54),
+            ],
+        ),
+    ))
+    page.update()
+
     if not check_backend():
         try:
             import pyi_splash # type: ignore # Es normal que marque error se importa con pyinstaller
@@ -285,6 +303,7 @@ def main(page: ft.Page):
         server_config_button.top = 12
         server_config_button.right = 12
 
+        page.controls.clear()
         page.add(ft.Stack(
             expand=True,
             controls=[

@@ -5,6 +5,7 @@ from datetime import datetime
 import flet as ft
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
+from components import loading_icon_button
 
 
 MOVEMENT_LABELS = {
@@ -407,8 +408,8 @@ def inventory_view(page: ft.Page, app_state: dict):
                             padding=ft.padding.only(top=10, left=12, right=12, bottom=4),
                             content=ft.Row(controls=[
                                 search_field,           # control directo
-                                ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                              on_click=refresh_all, tooltip="Actualizar"),
+                                loading_icon_button(page, ft.icons.REFRESH, refresh_all,
+                                                    icon_color=PRIMARY, tooltip="Actualizar"),
                             ], spacing=10),
                         ),
                         ft.Container(
@@ -435,9 +436,10 @@ def inventory_view(page: ft.Page, app_state: dict):
                                 ft.Text("Productos con stock bajo", size=16,
                                         weight=ft.FontWeight.BOLD,
                                         color=ft.colors.WHITE, expand=True),
-                                ft.IconButton(ft.icons.REFRESH, icon_color=PRIMARY,
-                                              on_click=lambda _: [load_low_stock(), render_low_stock()],
-                                              tooltip="Actualizar"),
+                                loading_icon_button(
+                                    page, ft.icons.REFRESH,
+                                    lambda _: [load_low_stock(), render_low_stock()],
+                                    icon_color=PRIMARY, tooltip="Actualizar"),
                             ]),
                         ),
                         ft.Container(expand=True,

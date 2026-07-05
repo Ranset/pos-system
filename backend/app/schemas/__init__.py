@@ -245,6 +245,11 @@ class CloseCashSession(BaseModel):
     notes: Optional[str] = None
 
 
+class TransferCashSession(BaseModel):
+    new_cashier_id: int
+    reason: Optional[str] = None
+
+
 class CashMovementCreate(BaseModel):
     movement_type: MovementType
     amount: Decimal
@@ -331,6 +336,8 @@ class SaleOut(BaseModel):
     payment_amount: Decimal
     change_amount: Decimal
     cash_tendered: Decimal = Decimal("0.00")
+    commission_pct: float = 0.0
+    commission_amount: Decimal = Decimal("0.00")
     # str en lugar de SaleStatus para tolerar valores en mayúsculas del legado en BD
     status: str
 

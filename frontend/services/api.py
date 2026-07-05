@@ -229,6 +229,11 @@ class APIClient:
     def close_session(self, session_id: int, data: dict):
         return self.post(f"/cash/sessions/{session_id}/close", data)
 
+    def transfer_session(self, session_id: int, new_cashier_id: int, reason: str = None):
+        return self.post(f"/cash/sessions/{session_id}/transfer", {
+            "new_cashier_id": new_cashier_id, "reason": reason,
+        })
+
     def add_cash_movement(self, session_id: int, data: dict):
         return self.post(f"/cash/sessions/{session_id}/movement", data)
 
