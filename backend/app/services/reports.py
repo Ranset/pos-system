@@ -840,26 +840,32 @@ def _build_margen_beneficio(db, start, end, target_date, cashier_id, payment_met
     product_ids = {it.product_id for s in sales for it in s.items if it.product_id}
     products_map = {}
     if product_ids:
-        products_map = {p.id: p for p in db.query(Product).filter(Product.id.in_(product_ids)).all()}
+        products_map = {
+            p.id: p for p in db.query(Product)
+            .options(joinedload(Product.category))
+            .filter(Product.id.in_(product_ids)).all()
+        }
 
     totals: dict = {}
     for s in sales:
         for it in s.items:
             key = (it.product_code, it.product_name)
-            row = totals.setdefault(key, {"name": it.product_name, "qty": 0.0,
-                                          "revenue": Decimal("0"), "cost": Decimal("0")})
+            row = totals.setdefault(key, {"name": it.product_name, "category": "Sin categoría",
+                                          "qty": 0.0, "revenue": Decimal("0"), "cost": Decimal("0")})
             row["qty"] += it.quantity
             row["revenue"] += it.subtotal
             product = products_map.get(it.product_id)
             cost_unit = product.cost if product and product.cost else Decimal("0")
             row["cost"] += _dec(cost_unit) * Decimal(str(it.quantity))
+            if product and product.category:
+                row["category"] = product.category.name
 
     rows = []
     for r in totals.values():
         margin = r["revenue"] - r["cost"]
         margin_pct = float(margin / r["revenue"] * 100) if r["revenue"] else 0.0
         rows.append({
-            "name": r["name"], "qty": r["qty"],
+            "name": r["name"], "category": r["category"], "qty": r["qty"],
             "revenue": float(r["revenue"]), "cost": float(r["cost"]),
             "margin": float(margin), "margin_pct": margin_pct,
         })
@@ -867,6 +873,7 @@ def _build_margen_beneficio(db, start, end, target_date, cashier_id, payment_met
 
     columns = [
         {"key": "name", "label": "Producto", "type": "text"},
+        {"key": "category", "label": "Categoría", "type": "text"},
         {"key": "qty", "label": "Cantidad", "type": "qty"},
         {"key": "revenue", "label": "Ingresos", "type": "currency"},
         {"key": "cost", "label": "Costo", "type": "currency"},
