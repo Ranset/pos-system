@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     gcc \
     default-libmysqlclient-dev \
+    default-mysql-client \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 

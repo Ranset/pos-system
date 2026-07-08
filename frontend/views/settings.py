@@ -2,6 +2,7 @@
 Vista de Configuración – Panel completo de ajustes del sistema POS
 Incluye: configuración clave-valor y administración de cajas registradoras
 """
+from datetime import datetime
 import flet as ft
 from config import PRIMARY, PRIMARY_LT, BG_DARK, BG_CARD, BG_SURFACE, SUCCESS, ERROR, WARNING
 from services import api, APIError
@@ -1382,6 +1383,119 @@ def settings_view(page: ft.Page, app_state: dict):
             require_word="RESET",
         )
 
+    # ── Respaldo y Restauración ────────────────────────────────────────────────
+
+    _BACKUP_SAVE_TAG  = "settings_backup_save_picker"
+    _RESTORE_PICK_TAG = "settings_restore_pick_picker"
+    page.overlay[:] = [c for c in page.overlay
+                       if getattr(c, "data", None) not in (_BACKUP_SAVE_TAG, _RESTORE_PICK_TAG)]
+
+    backup_state   = {"content": None}
+    backup_loading = ft.ProgressRing(width=18, height=18, color=PRIMARY, visible=False)
+
+    def _on_backup_save_result(e: ft.FilePickerResultEvent):
+        if not e.path or not backup_state["content"]:
+            return
+        try:
+            with open(e.path, "wb") as f:
+                f.write(backup_state["content"])
+            _show_snack(f"✅ Respaldo guardado en: {e.path}")
+        except Exception as ex:
+            _show_snack(f"No se pudo guardar el archivo: {ex}", ERROR)
+
+    backup_save_picker = ft.FilePicker(on_result=_on_backup_save_result, data=_BACKUP_SAVE_TAG)
+    page.overlay.append(backup_save_picker)
+
+    def action_download_backup(e=None):
+        backup_loading.visible = True
+        page.update()
+        try:
+            backup_state["content"] = api.download_backup()
+        except APIError as ex:
+            _show_snack(str(ex), ERROR)
+            return
+        finally:
+            backup_loading.visible = False
+            page.update()
+        backup_save_picker.save_file(
+            dialog_title="Guardar respaldo de la base de datos",
+            file_name=f"pos_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql",
+            allowed_extensions=["sql"],
+        )
+
+    def _on_restore_pick_result(e: ft.FilePickerResultEvent):
+        if not e.files:
+            return
+        file_path = e.files[0].path
+        file_name = e.files[0].name
+        try:
+            with open(file_path, "rb") as f:
+                content = f.read()
+        except Exception as ex:
+            _show_snack(f"No se pudo leer el archivo: {ex}", ERROR)
+            return
+
+        def run():
+            res = api.restore_backup(file_name, content)
+            last_op_text.value = f"✅ {res.get('message', 'Base de datos restaurada')}"
+            _show_snack(last_op_text.value)
+            load_db_stats()
+
+        _confirm_action(
+            title="Restaurar base de datos desde respaldo",
+            lines=[
+                f"Archivo seleccionado: {file_name}",
+                "Se ELIMINARÁ toda la información actual (ventas, productos, "
+                "usuarios, configuración... TODO) y se reemplazará por la del respaldo",
+                "Es posible que debas iniciar sesión nuevamente después de restaurar",
+                "Esta acción es IRREVERSIBLE. Asegúrate de tener un respaldo "
+                "actual antes de continuar",
+            ],
+            action_label="Sí, restaurar y sobrescribir todo",
+            action_color=ERROR,
+            on_confirm=run,
+            require_word="RESTAURAR",
+        )
+
+    restore_pick_picker = ft.FilePicker(on_result=_on_restore_pick_result, data=_RESTORE_PICK_TAG)
+    page.overlay.append(restore_pick_picker)
+
+    def action_pick_restore_file(e=None):
+        restore_pick_picker.pick_files(
+            dialog_title="Seleccionar archivo de respaldo (.sql)",
+            allow_multiple=False,
+            allowed_extensions=["sql"],
+        )
+
+    def _backup_card():
+        return ft.Container(
+            bgcolor=BG_CARD, border_radius=10,
+            border=ft.border.all(1, PRIMARY + "44"),
+            padding=ft.padding.all(16),
+            content=ft.Row([
+                ft.Icon(ft.icons.CLOUD_DOWNLOAD, color=PRIMARY, size=22),
+                ft.Column(expand=True, spacing=2, controls=[
+                    ft.Text("Descargar respaldo", color=ft.colors.WHITE, size=14,
+                            weight=ft.FontWeight.W_600),
+                    ft.Text(
+                        "Genera un archivo .sql con toda la información actual "
+                        "(ventas, productos, usuarios, configuración...).",
+                        color=ft.colors.WHITE54, size=11,
+                    ),
+                ]),
+                backup_loading,
+                ft.ElevatedButton(
+                    "Descargar", icon=ft.icons.DOWNLOAD,
+                    on_click=action_download_backup,
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY + "22", color=PRIMARY,
+                        side=ft.BorderSide(1, PRIMARY),
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
+                ),
+            ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+
     load_db_stats()
 
     def _danger_btn(label, icon, on_click, color=ERROR, desc=""):
@@ -1450,6 +1564,11 @@ def settings_view(page: ft.Page, app_state: dict):
                                     ),
                                 ], spacing=8),
                             ),
+                            # Respaldo y restauración
+                            ft.Text("💾 Respaldo y Restauración", size=13,
+                                    color=ft.colors.WHITE70, weight=ft.FontWeight.BOLD),
+                            _backup_card(),
+                            ft.Divider(color=ft.colors.WHITE12),
                             # Zona de operaciones
                             ft.Text("⚡ Operaciones de Datos", size=13,
                                     color=ft.colors.WHITE70, weight=ft.FontWeight.BOLD),
@@ -1490,6 +1609,13 @@ def settings_view(page: ft.Page, app_state: dict):
                                 on_click=lambda _: action_full_reset(),
                                 color=ERROR,
                                 desc="Borra ventas, sesiones y movimientos en una sola operación. Escribe RESET.",
+                            ),
+                            _danger_btn(
+                                "Restaurar respaldo desde archivo",
+                                ft.icons.SETTINGS_BACKUP_RESTORE,
+                                on_click=lambda _: action_pick_restore_file(),
+                                color=ERROR,
+                                desc="Reemplaza TODA la base de datos actual con un archivo .sql. Escribe RESTAURAR.",
                             ),
                         ],
                     ),

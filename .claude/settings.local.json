@@ -115,7 +115,22 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('frontend/views/cash.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(docker restart *)",
       "Bash(curl -s http://localhost:8000/openapi.json)",
-      "Bash(curl -s http://localhost:8000/health)"
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('backend/app/routers/admin.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('frontend/services/api.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(docker-compose build *)",
+      "Bash(docker-compose up *)",
+      "Bash(docker exec *)",
+      "Bash(curl --version)",
+      "Bash(docker cp *)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend grep -n \"ssl=0\" /app/app/routers/admin.py)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"date; timeout 30 mysql --ssl=0 -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/test_backup.sql; echo EXIT=\\\\$?; date\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"timeout 20 mysql --ssl=0 -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/partial.sql; echo EXIT=\\\\$?\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"timeout 15 mysql --ssl=0 -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/tiny.sql; echo EXIT=\\\\$?\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"timeout 15 mysql --ssl=0 -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/one_table.sql; echo EXIT=\\\\$?\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"date; timeout 60 mysql --ssl=0 -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/test_backup.sql; echo EXIT=\\\\$?; date\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"timeout 20 mysql --ssl=0 --init-command='SET SESSION lock_wait_timeout=8' -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/test_backup.sql; echo EXIT=\\\\$?\")",
+      "Bash(docker exec pos_mysql mysql -u root -proot_password -e ' *)"
     ]
   }
 }

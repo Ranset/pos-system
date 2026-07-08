@@ -318,6 +318,28 @@ class APIClient:
     def full_db_reset(self):
         return self.delete("/admin/all")
 
+    def download_backup(self) -> bytes:
+        """Descarga un respaldo completo de la base de datos (mysqldump)."""
+        with httpx.Client(timeout=httpx.Timeout(300.0)) as client:
+            resp = client.get(f"{self.base_url}/admin/backup", headers=self._headers())
+        if resp.status_code != 200:
+            try:
+                detail = resp.json().get("detail", resp.text)
+            except Exception:
+                detail = resp.text
+            raise APIError(str(detail), resp.status_code)
+        return resp.content
+
+    def restore_backup(self, filename: str, content: bytes) -> dict:
+        """Restaura la base de datos a partir de un archivo .sql de respaldo."""
+        with httpx.Client(timeout=httpx.Timeout(300.0)) as client:
+            resp = client.post(
+                f"{self.base_url}/admin/restore",
+                headers={"Authorization": f"Bearer {self.token}"} if self.token else {},
+                files={"file": (filename, content, "application/sql")},
+            )
+        return self._handle_response(resp)
+
 
 # Instancia global compartida
 api = APIClient()

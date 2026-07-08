@@ -2,14 +2,22 @@
 Router de administración de base de datos.
 Operaciones destructivas — solo administradores.
 """
-from fastapi import APIRouter, Depends, Query
+import os
+import subprocess
+import tempfile
+from datetime import datetime
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..database import get_db, engine
 from ..models import Sale, SaleItem, CashSession, CashMovement, InventoryMovement
 from ..services.auth import require_admin
+from ..config import settings
 
 router = APIRouter(prefix="/admin", tags=["Administración"])
+
+# Tiempo máximo (segundos) para el respaldo/restauración vía mysqldump/mysql.
+_DUMP_TIMEOUT = 300
 
 
 @router.post("/force-migrate")
@@ -154,3 +162,107 @@ def full_reset(db: Session = Depends(get_db), _=Depends(require_admin)):
             f"{inv_del} mov. inventario eliminados."
         ),
     }
+
+
+@router.get("/backup")
+def backup_database(_=Depends(require_admin)):
+    """Genera un respaldo completo de la base de datos (mysqldump) y lo
+    devuelve como archivo .sql descargable. Incluye esquema y datos."""
+    env = os.environ.copy()
+    env["MYSQL_PWD"] = settings.DB_PASSWORD
+    cmd = [
+        "mysqldump",
+        "-h", settings.DB_HOST,
+        "-P", str(settings.DB_PORT),
+        "-u", settings.DB_USER,
+        "--ssl=0",
+        "--single-transaction",
+        "--routines",
+        "--triggers",
+        settings.DB_NAME,
+    ]
+    try:
+        result = subprocess.run(cmd, env=env, capture_output=True, timeout=_DUMP_TIMEOUT)
+    except FileNotFoundError:
+        raise HTTPException(
+            500,
+            "mysqldump no está instalado en el contenedor del backend. "
+            "Reconstruye la imagen: docker-compose build backend && docker-compose up -d backend",
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(500, "El respaldo tardó demasiado y fue cancelado (timeout)")
+
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace")[:500]
+        raise HTTPException(500, f"Error al generar el respaldo: {detail}")
+
+    filename = f"pos_backup_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.sql"
+    return Response(
+        content=result.stdout,
+        media_type="application/sql",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/restore")
+def restore_database(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Restaura la base de datos completa a partir de un archivo .sql de
+    respaldo generado por /admin/backup. SOBRESCRIBE todos los datos actuales
+    (el dump de mysqldump incluye DROP TABLE + CREATE TABLE para cada tabla).
+    Definido como `def` (no `async def`): subprocess.run() es bloqueante, y
+    FastAPI ejecuta los endpoints síncronos en un threadpool en vez del loop
+    de asyncio, evitando congelar el resto de las peticiones del worker."""
+    content = file.file.read()
+    if not content:
+        raise HTTPException(400, "El archivo está vacío")
+
+    # La dependencia require_admin/get_current_user deja abierta (hasta el
+    # final de la petición) una transacción de solo lectura sobre `users`
+    # para verificar el rol. Como el restore necesita bloquear esa misma
+    # tabla exclusivamente (DROP+CREATE), hay que liberar ese lock ahora;
+    # de lo contrario esta misma petición se autobloquea contra sí misma.
+    db.close()
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".sql", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        env = os.environ.copy()
+        env["MYSQL_PWD"] = settings.DB_PASSWORD
+        cmd = [
+            "mysql",
+            "-h", settings.DB_HOST,
+            "-P", str(settings.DB_PORT),
+            "-u", settings.DB_USER,
+            "--ssl=0",
+            # Si otro cliente POS conectado mantiene un bloqueo sobre alguna
+            # tabla, fallar rápido con un error claro en vez de colgar la
+            # petición varios minutos.
+            "--init-command=SET SESSION lock_wait_timeout=15",
+            settings.DB_NAME,
+        ]
+        with open(tmp_path, "rb") as f:
+            result = subprocess.run(cmd, env=env, stdin=f, capture_output=True, timeout=_DUMP_TIMEOUT)
+    except FileNotFoundError:
+        raise HTTPException(
+            500,
+            "El cliente 'mysql' no está instalado en el contenedor del backend. "
+            "Reconstruye la imagen: docker-compose build backend && docker-compose up -d backend",
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(500, "La restauración tardó demasiado y fue cancelada (timeout)")
+    finally:
+        if tmp_path:
+            os.unlink(tmp_path)
+
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace")[:500]
+        raise HTTPException(500, f"Error al restaurar el respaldo: {detail}")
+
+    return {"message": "Base de datos restaurada correctamente desde el respaldo"}
