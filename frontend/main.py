@@ -65,15 +65,19 @@ def main(page: ft.Page):
 
     loading_overlay = ft.Container(
         visible=False,
-        expand=True,
+        top=0, left=0, right=0, bottom=0,
         bgcolor=ft.colors.with_opacity(0.6, ft.colors.BLACK),
-        alignment=ft.alignment.center,
-        content=ft.Column(
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                ft.ProgressRing(color=PRIMARY, width=48, height=48),
-                ft.Text("Cargando...", color=ft.colors.WHITE),
-            ],
+        content=ft.Container(
+            expand=True,
+            alignment=ft.alignment.center,
+            content=ft.Column(
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[
+                    ft.ProgressRing(color=PRIMARY, width=48, height=48),
+                    ft.Text("Cargando...", color=ft.colors.WHITE),
+                ],
+            ),
         ),
     )
 

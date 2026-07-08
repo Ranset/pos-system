@@ -300,6 +300,8 @@ def update_physical_count(
     if not session:
         raise HTTPException(404, "Sesión no encontrada")
     session.closing_amount = Decimal(str(closing_amount))
+    if session.expected_amount is not None:
+        session.difference = session.closing_amount - session.expected_amount
     db.commit()
     return {"detail": "Conteo físico actualizado", "closing_amount": closing_amount}
 

@@ -445,6 +445,7 @@ PAYMENT_LABELS = {
     "cash": "Efectivo", "card": "Tarjeta", "transfer": "Transferencia", "mixed": "Mixto",
 }
 MOVEMENT_LABELS = {"in": "Entrada", "out": "Salida", "adjustment": "Ajuste"}
+CASH_MOVEMENT_LABELS = {"income": "Entrada (depósito)", "expense": "Salida (retiro)"}
 SALE_STATUS_LABELS = {
     "completed": "Completada", "cancelled": "Cancelada",
     "partial_return": "Devolución parcial", "returned": "Devuelta",
@@ -463,6 +464,7 @@ REPORT_TITLES = {
     "devoluciones":         "Devoluciones",
     "margen_beneficio":     "Margen de beneficio",
     "efectivo_inicio_caja": "Efectivo en inicio de caja",
+    "movimientos_caja":     "Movimientos de caja",
     "descuentos_aplicados": "Descuentos aplicados",
     "lista_productos":      "Lista de productos",
     "movimientos_inventario": "Movimientos de inventario",
@@ -903,6 +905,7 @@ def _build_efectivo_inicio_caja(db, start, end, target_date, cashier_id, payment
             "cashier": s.cashier.full_name if s.cashier else "",
             "opening": float(s.opening_amount or 0),
             "status": SESSION_STATUS_LABELS.get(status_val, status_val),
+            "notes": s.notes or "",
         })
 
     columns = [
@@ -911,6 +914,47 @@ def _build_efectivo_inicio_caja(db, start, end, target_date, cashier_id, payment
         {"key": "cashier", "label": "Cajero", "type": "text"},
         {"key": "opening", "label": "Fondo inicial", "type": "currency"},
         {"key": "status", "label": "Estado", "type": "text"},
+        {"key": "notes", "label": "Notas de apertura", "type": "text"},
+    ]
+    return columns, rows
+
+
+def _build_movimientos_caja(db, start, end, target_date, cashier_id, payment_method):
+    """Entradas y salidas manuales de efectivo registradas en las cajas
+    (depósitos/retiros), independientes de las ventas."""
+    start_dt, end_dt = _range_dt(start, end)
+    q = (
+        db.query(CashMovement)
+        .options(
+            joinedload(CashMovement.session).joinedload(CashSession.register),
+            joinedload(CashMovement.user),
+        )
+        .filter(CashMovement.created_at >= start_dt, CashMovement.created_at <= end_dt)
+    )
+    if cashier_id:
+        q = q.filter(CashMovement.user_id == cashier_id)
+    movs = q.order_by(CashMovement.created_at.desc()).all()
+
+    rows = []
+    for m in movs:
+        session = m.session
+        type_val = _enum_value(m.movement_type)
+        rows.append({
+            "date": to_local(m.created_at).isoformat() if m.created_at else "",
+            "register": session.register.name if session and session.register else "",
+            "type": CASH_MOVEMENT_LABELS.get(type_val, type_val),
+            "amount": float(m.amount),
+            "reason": m.reason or "",
+            "user": m.user.full_name if m.user else "",
+        })
+
+    columns = [
+        {"key": "date", "label": "Fecha", "type": "datetime"},
+        {"key": "register", "label": "Caja", "type": "text"},
+        {"key": "type", "label": "Tipo", "type": "text"},
+        {"key": "amount", "label": "Monto", "type": "currency"},
+        {"key": "reason", "label": "Motivo", "type": "text"},
+        {"key": "user", "label": "Usuario", "type": "text"},
     ]
     return columns, rows
 
@@ -1077,6 +1121,7 @@ _REPORT_BUILDERS = {
     "devoluciones": _build_devoluciones,
     "margen_beneficio": _build_margen_beneficio,
     "efectivo_inicio_caja": _build_efectivo_inicio_caja,
+    "movimientos_caja": _build_movimientos_caja,
     "descuentos_aplicados": _build_descuentos_aplicados,
     "lista_productos": _build_lista_productos,
     "movimientos_inventario": _build_movimientos_inventario,

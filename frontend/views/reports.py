@@ -686,6 +686,7 @@ def reports_view(page: ft.Page, app_state: dict):
             {"key": "devoluciones", "label": "Devoluciones", "filters": ["range", "cashier"]},
             {"key": "margen_beneficio", "label": "Margen de Beneficio", "filters": ["range", "cashier", "payment_method"]},
             {"key": "efectivo_inicio_caja", "label": "Efectivo en Inicio de Caja", "filters": ["range", "cashier"]},
+            {"key": "movimientos_caja", "label": "Movimientos de Caja", "filters": ["range", "cashier"]},
             {"key": "descuentos_aplicados", "label": "Descuentos aplicados", "filters": ["range", "cashier", "payment_method"]},
         ]),
         ("Inventario", [

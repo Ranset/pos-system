@@ -130,7 +130,10 @@
       "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"timeout 15 mysql --ssl=0 -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/one_table.sql; echo EXIT=\\\\$?\")",
       "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"date; timeout 60 mysql --ssl=0 -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/test_backup.sql; echo EXIT=\\\\$?; date\")",
       "Bash(MSYS_NO_PATHCONV=1 docker exec pos_backend sh -c \"timeout 20 mysql --ssl=0 --init-command='SET SESSION lock_wait_timeout=8' -h db -P 3306 -u pos_user -ppos_password pos_db < /tmp/test_backup.sql; echo EXIT=\\\\$?\")",
-      "Bash(docker exec pos_mysql mysql -u root -proot_password -e ' *)"
+      "Bash(docker exec pos_mysql mysql -u root -proot_password -e ' *)",
+      "Bash(python -m json.tool)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('backend/app/routers/cash.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(docker exec pos_mysql mysql -u pos_user -ppos_password pos_db -e ' *)"
     ]
   }
 }
