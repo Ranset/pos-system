@@ -1,4 +1,10 @@
 backend/.env.example
+.env
+backend/.env
+frontend/.env
+backend/test_api_pinpad_pyment.py
+backend/test_api_pinpad_consulta.py
+backend/test_api_pinpad_cancel.py
 backend/app/__pycache__/
 backend/app/models/__pycache__/
 backend/app/routers/__pycache__/

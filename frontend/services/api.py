@@ -340,6 +340,35 @@ class APIClient:
             )
         return self._handle_response(resp)
 
+    # ── Clip / Terminal de Pago ────────────────────────────────────────────────
+
+    def create_clip_payment(self, data: dict):
+        return self.post("/clip/payments", data)
+
+    def get_clip_payment_status(self, payment_id: int):
+        return self.get(f"/clip/payments/{payment_id}/status")
+
+    def cancel_clip_payment(self, payment_id: int):
+        return self.request("POST", f"/clip/payments/{payment_id}/cancel")
+
+    def get_clip_terminals(self):
+        return self.get("/clip/terminals")
+
+    def get_all_clip_terminals(self):
+        return self.get("/clip/terminals/all")
+
+    def create_clip_terminal(self, data: dict):
+        return self.post("/clip/terminals", data)
+
+    def update_clip_terminal(self, terminal_id: int, data: dict):
+        return self.put(f"/clip/terminals/{terminal_id}", data)
+
+    def delete_clip_terminal(self, terminal_id: int):
+        return self.delete(f"/clip/terminals/{terminal_id}")
+
+    def cancel_pending_by_terminal(self, terminal_id: int):
+        return self.request("POST", f"/clip/terminals/{terminal_id}/cancel-pending")
+
 
 # Instancia global compartida
 api = APIClient()

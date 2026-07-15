@@ -45,6 +45,16 @@ class MovementType(str, enum.Enum):
     EXPENSE = "expense"
 
 
+class ClipPaymentStatus(str, enum.Enum):
+    """Estado del cobro con terminal Clip — independiente de Sale.status.
+    La Venta (Sale) solo se crea cuando este estado llega a APPROVED."""
+    PENDING   = "pending"
+    APPROVED  = "approved"
+    DECLINED  = "declined"
+    CANCELLED = "cancelled"
+    ERROR     = "error"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Usuarios y Roles
 # ─────────────────────────────────────────────────────────────────────────────
@@ -152,10 +162,12 @@ class CashRegister(Base):
     name = Column(String(80), nullable=False)           # Ej: "Caja 1", "Caja Principal"
     location = Column(String(120), nullable=True)
     printer_name = Column(String(120), nullable=True)   # Nombre impresora asociada
+    clip_terminal_id = Column(Integer, ForeignKey("clip_terminals.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     sessions = relationship("CashSession", back_populates="register")
+    clip_terminal = relationship("ClipTerminal")
 
 
 class CashSession(Base):
@@ -193,6 +205,66 @@ class CashMovement(Base):
 
     session = relationship("CashSession", back_populates="movements")
     user = relationship("User")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Terminal de pago Clip PinPad
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ClipTerminal(Base):
+    """Una terminal física Clip PinPad. Se asigna a una CashRegister (caja/
+    sucursal) para permitir múltiples terminales en el mismo negocio."""
+    __tablename__ = "clip_terminals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(80), nullable=False)
+    serial_number = Column(String(50), unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ClipPayment(Base):
+    """Ciclo de vida de un cobro con terminal Clip, independiente de Sale.
+    La Sale correspondiente solo se crea (sale_id se asigna) cuando status
+    llega a APPROVED, tras confirmar con GET /payment — nunca antes."""
+    __tablename__ = "clip_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sale_id = Column(Integer, ForeignKey("sales.id"), nullable=True)
+    clip_terminal_id = Column(Integer, ForeignKey("clip_terminals.id"), nullable=False)
+    cashier_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    session_id = Column(Integer, ForeignKey("cash_sessions.id"), nullable=True)
+
+    reference = Column(String(60), unique=True, nullable=False, index=True)
+    pinpad_request_id = Column(String(100), nullable=True, index=True)
+    transaction_id = Column(String(100), nullable=True)
+    merchant_id = Column(String(100), nullable=True)
+    receipt_number = Column(String(50), nullable=True)
+    authorization_code = Column(String(50), nullable=True)
+    card_brand = Column(String(30), nullable=True)
+    card_type = Column(String(30), nullable=True)
+    last4 = Column(String(4), nullable=True)
+    issuer = Column(String(50), nullable=True)
+    entry_mode = Column(String(30), nullable=True)
+
+    amount = Column(DECIMAL(10, 2), nullable=False)
+    tip_amount = Column(DECIMAL(10, 2), default=0.00)
+    amount_paid = Column(DECIMAL(10, 2), nullable=True)
+
+    status = Column(String(20), default=ClipPaymentStatus.PENDING.value)
+    error_message = Column(Text, nullable=True)
+    sale_payload = Column(Text, nullable=True)    # JSON del SaleCreate original
+    raw_response = Column(Text, nullable=True)    # JSON completo de la última respuesta de Clip
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    approved_at = Column(DateTime, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+
+    terminal = relationship("ClipTerminal")
+    cashier = relationship("User")
+    sale = relationship("Sale")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

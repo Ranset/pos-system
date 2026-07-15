@@ -48,6 +48,11 @@ services:
       # Desfase horario local respecto a UTC (datetime.utcnow() se usa para
       # guardar created_at). Ajustar según la zona horaria de la tienda.
       TIMEZONE_OFFSET_HOURS: -5
+      # Terminal de pago Clip PinPad — valores reales en el .env de la raíz
+      # del proyecto (gitignored), nunca hardcodeados aquí.
+      CLIP_API_KEY: ${CLIP_API_KEY}
+      CLIP_API_SECRET: ${CLIP_API_SECRET}
+      CLIP_API_BASE_URL: https://api.payclip.io/f2f/pinpad/v1
     depends_on:
       db:
         condition: service_healthy

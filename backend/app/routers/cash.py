@@ -63,7 +63,9 @@ def update_register(
     if data.name and data.name != reg.name:
         if db.query(CashRegister).filter(CashRegister.name == data.name).first():
             raise HTTPException(400, f"Ya existe una caja con el nombre '{data.name}'")
-    for field, val in data.model_dump(exclude_none=True).items():
+    # exclude_unset (no exclude_none): permite enviar clip_terminal_id=null para
+    # desasignar una terminal explícitamente, distinguiéndolo de "no enviado".
+    for field, val in data.model_dump(exclude_unset=True).items():
         setattr(reg, field, val)
     db.commit()
     db.refresh(reg)
@@ -116,7 +118,7 @@ def get_active_sessions(db: Session = Depends(get_db), _=Depends(require_cashier
     return [
         {
             "id": s.id,
-            "register": {"id": s.register.id, "name": s.register.name},
+            "register": {"id": s.register.id, "name": s.register.name, "clip_terminal_id": s.register.clip_terminal_id},
             "cashier": {"id": s.cashier.id, "full_name": s.cashier.full_name},
             "opening_amount": float(s.opening_amount),
             "opened_at": s.opened_at.isoformat(),

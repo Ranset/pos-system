@@ -216,6 +216,7 @@ class CashRegisterOut(BaseModel):
     name: str
     location: Optional[str] = None
     printer_name: Optional[str] = None
+    clip_terminal_id: Optional[int] = None
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -225,12 +226,14 @@ class CashRegisterCreate(BaseModel):
     name: str
     location: Optional[str] = ""
     printer_name: Optional[str] = None
+    clip_terminal_id: Optional[int] = None
 
 
 class CashRegisterUpdate(BaseModel):
     name: Optional[str] = None
     location: Optional[str] = None
     printer_name: Optional[str] = None
+    clip_terminal_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -348,6 +351,57 @@ class SaleOut(BaseModel):
     notes: Optional[str]
     created_at: datetime
     items: List[SaleItemOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Clip PinPad
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ClipTerminalOut(BaseModel):
+    id: int
+    name: str
+    serial_number: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ClipTerminalCreate(BaseModel):
+    name: str
+    serial_number: str
+
+
+class ClipTerminalUpdate(BaseModel):
+    name: Optional[str] = None
+    serial_number: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ClipPaymentCreate(BaseModel):
+    sale_payload: SaleCreate
+    tip_amount: Decimal = Decimal("0.00")
+    clip_terminal_id: Optional[int] = None  # si no se manda, se usa el de la caja activa
+
+
+class ClipPaymentOut(BaseModel):
+    id: int
+    sale_id: Optional[int] = None
+    clip_terminal_id: int
+    reference: str
+    pinpad_request_id: Optional[str] = None
+    amount: Decimal
+    tip_amount: Decimal
+    amount_paid: Optional[Decimal] = None
+    status: str
+    error_message: Optional[str] = None
+    card_brand: Optional[str] = None
+    last4: Optional[str] = None
+    created_at: datetime
+    approved_at: Optional[datetime] = None
+    sale: Optional[SaleOut] = None
 
     model_config = {"from_attributes": True}
 

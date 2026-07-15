@@ -2,19 +2,23 @@
 POS System - FastAPI Backend
 Arranca con: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
+import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from .config import settings
 from .database import Base, engine, SessionLocal
-from .models import User, UserRole, CashRegister, Category   # noqa: F401
+from .models import User, UserRole, CashRegister, Category, ClipPayment   # noqa: F401
 from .routers import (
     auth_router, users_router, products_router, categories_router,
     sales_router, cash_router, reports_router, settings_router, admin_router,
+    clip_router, clip_webhook_router,
 )
 from .services.auth import hash_password
+from .services.clip_pinpad import ClipPinpadService
 
 
 from sqlalchemy import text
@@ -83,6 +87,40 @@ def _run_schema_migrations():
                      "FOREIGN KEY (return_id) REFERENCES sale_returns(id) ON DELETE CASCADE,"
                      "FOREIGN KEY (product_id) REFERENCES products(id))"),
         },
+        {
+            "name": "clip_terminals table",
+            "sql":  ("CREATE TABLE IF NOT EXISTS clip_terminals ("
+                     "id INT AUTO_INCREMENT PRIMARY KEY,"
+                     "name VARCHAR(80) NOT NULL,"
+                     "serial_number VARCHAR(50) NOT NULL UNIQUE,"
+                     "is_active BOOLEAN DEFAULT TRUE,"
+                     "created_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                     "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)"),
+        },
+        {
+            "name": "cash_registers.clip_terminal_id",
+            "sql":  ("ALTER TABLE cash_registers ADD COLUMN clip_terminal_id INT NULL, "
+                     "ADD FOREIGN KEY (clip_terminal_id) REFERENCES clip_terminals(id)"),
+        },
+        {
+            "name": "clip_payments table",
+            "sql":  ("CREATE TABLE IF NOT EXISTS clip_payments ("
+                     "id INT AUTO_INCREMENT PRIMARY KEY,"
+                     "sale_id INT NULL, clip_terminal_id INT NOT NULL, cashier_id INT NOT NULL, session_id INT NULL,"
+                     "reference VARCHAR(60) NOT NULL UNIQUE, pinpad_request_id VARCHAR(100), "
+                     "transaction_id VARCHAR(100), merchant_id VARCHAR(100), receipt_number VARCHAR(50), "
+                     "authorization_code VARCHAR(50), card_brand VARCHAR(30), card_type VARCHAR(30), "
+                     "last4 VARCHAR(4), issuer VARCHAR(50), entry_mode VARCHAR(30), "
+                     "amount DECIMAL(10,2) NOT NULL, tip_amount DECIMAL(10,2) DEFAULT 0.00, amount_paid DECIMAL(10,2), "
+                     "status VARCHAR(20) DEFAULT 'pending', error_message TEXT, sale_payload TEXT, raw_response TEXT, "
+                     "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                     "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
+                     "approved_at DATETIME, last_synced_at DATETIME,"
+                     "FOREIGN KEY (sale_id) REFERENCES sales(id), "
+                     "FOREIGN KEY (clip_terminal_id) REFERENCES clip_terminals(id), "
+                     "FOREIGN KEY (cashier_id) REFERENCES users(id), "
+                     "FOREIGN KEY (session_id) REFERENCES cash_sessions(id))"),
+        },
     ]
     with engine.connect() as conn:
         for m in migrations:
@@ -98,12 +136,54 @@ def _run_schema_migrations():
                     print(f"⚠️  Migración '{m['name']}': {e}")
 
 
+async def _clip_reconciliation_loop():
+    """Red de seguridad para cobros con Clip que se quedaron en 'pending' sin que
+    el polling del frontend ni el webhook los hayan resuelto (ej. el cajero cerró
+    la app, o el webhook nunca llegó por no ser el backend alcanzable desde
+    internet). Nunca marca nada como aprobado por sí misma — solo reutiliza
+    sync_payment, que siempre reconfirma con GET /payment antes de decidir."""
+    while True:
+        try:
+            await asyncio.sleep(60)
+            db = SessionLocal()
+            try:
+                cutoff = datetime.utcnow() - timedelta(seconds=5)
+                pending_ids = [
+                    p.id for p in db.query(ClipPayment.id)
+                    .filter(ClipPayment.status == "pending", ClipPayment.created_at < cutoff)
+                    .all()
+                ]
+                service = ClipPinpadService(db)
+                for pid in pending_ids:
+                    try:
+                        await asyncio.to_thread(service.sync_payment, pid)
+                    except Exception as exc:
+                        print(f"⚠️  [clip-reconcile] error en pago {pid}: {exc}")
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            print(f"⚠️  [clip-reconcile] error inesperado en el ciclo: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    # Con --workers 4, los procesos arrancan en paralelo y pueden pisarse al crear
+    # tablas nuevas por primera vez; MySQL responde 1684 ("being modified by
+    # concurrent DDL statement") al proceso que pierde la carrera — no es un error
+    # real, la tabla la crea el otro worker. Se ignora igual que "ya existe".
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        if "1684" not in str(e):
+            raise
+        print("   (ok) create_all: tabla en creación por otro worker, se ignora")
     _run_schema_migrations()
     _seed_defaults()
+    reconcile_task = asyncio.create_task(_clip_reconciliation_loop())
     yield
+    reconcile_task.cancel()
 
 
 def _seed_defaults():
@@ -184,6 +264,8 @@ app.include_router(cash_router, prefix=PREFIX)
 app.include_router(reports_router, prefix=PREFIX)
 app.include_router(settings_router, prefix=PREFIX)
 app.include_router(admin_router, prefix=PREFIX)
+app.include_router(clip_router, prefix=PREFIX)
+app.include_router(clip_webhook_router, prefix=PREFIX)
 
 
 @app.get("/")

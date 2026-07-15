@@ -67,6 +67,7 @@ def pos_view(page: ft.Page, app_state: dict):
     # ── Estado compartido ─────────────────────────────────────────────────────
     cart:      list = []   # {product, qty, unit_price, discount_pct}
     last_sale: dict = {}   # respuesta de la API tras completar la venta
+    pending_payment: dict = {}   # ClipPaymentOut mientras se espera la terminal
     state = {"mode": "pos"}
 
     # Handler único para todos los modos del POS.
@@ -105,11 +106,43 @@ def pos_view(page: ft.Page, app_state: dict):
             root.content = _build_pos()
         elif mode == "payment":
             root.content = _build_payment()
+        elif mode == "waiting_terminal":
+            root.content = _build_waiting_terminal()
         elif mode == "success":
             root.content = _build_success()
         # Siempre apuntar al dispatcher único — no al handler del modo
         page.on_keyboard_event = _pos_dispatcher
         page.update()
+
+    def _finalize_and_show_success(sale: dict, change: Decimal, method: str):
+        """Cola común tras registrar una venta (efectivo/tarjeta manual/tarjeta
+        con terminal): guarda last_sale, imprime, abre el cajón si aplica, limpia
+        el carrito y muestra la pantalla de éxito. El carrito NUNCA se limpia
+        antes de este punto — si un cobro con terminal se cancela o es
+        declinado, el carrito sigue intacto para reintentar."""
+        last_sale.clear()
+        last_sale.update(sale)
+        last_sale["_change"] = float(change)
+        last_sale["_currency"] = currency
+
+        try:
+            from services.printer import TicketPrinter
+            tp = TicketPrinter(api.get_config_map())
+            if tp.enabled and not tp.print_ticket(sale):
+                _snack(f"⚠ No se pudo imprimir el ticket: {tp.last_error}", WARNING)
+        except Exception as ex:
+            _snack(f"⚠ No se pudo imprimir el ticket: {ex}", WARNING)
+
+        if method in ("cash", "mixed"):
+            try:
+                from services.printer import TicketPrinter
+                tp = TicketPrinter(api.get_config_map())
+                tp.open_drawer()
+            except Exception:
+                pass
+
+        cart.clear()
+        _switch("success")
 
     # ─────────────────────────────────────────────────────────────────────────
     # ── PANTALLA POS ──────────────────────────────────────────────────────────
@@ -1507,7 +1540,25 @@ def pos_view(page: ft.Page, app_state: dict):
             "amount_str": "",      # lo que va escribiendo el cajero
             "cash_amount": Decimal("0"),
             "card_amount": Decimal("0"),
+            "card_mode": "terminal",   # terminal | manual — solo aplica a method == "card"
         }
+
+        def _has_clip_terminal() -> bool:
+            """La caja activa tiene una terminal Clip asignada y la función
+            está habilitada globalmente (Configuración → Clip)."""
+            info = app_state.get("session_info") or {}
+            return bool(info.get("clip_terminal_id")) and cfg.get("clip.enabled", "true") != "false"
+
+        def _card_manual_active() -> bool:
+            """True si debe mostrarse el campo de referencia manual: transferencia
+            (siempre manual), o tarjeta sin terminal asignada, o tarjeta con
+            'Manual' elegido explícitamente."""
+            m = pay_state["method"]
+            if m == "transfer":
+                return True
+            if m == "card":
+                return not _has_clip_terminal() or pay_state["card_mode"] == "manual"
+            return False
 
         # ── Controles de datos del cliente ────────────────────────────────────
         f_customer = ft.TextField(
@@ -1563,6 +1614,40 @@ def pos_view(page: ft.Page, app_state: dict):
             prefix_icon=ft.icons.TAG,
             visible=False,
         )
+
+        # Sub-selector Terminal / Manual — solo para Tarjeta cuando la caja
+        # activa tiene una terminal Clip asignada (ver _has_clip_terminal).
+        def _set_card_mode(mode: str):
+            pay_state["card_mode"] = mode
+            terminal_mode_btn.style = ft.ButtonStyle(
+                bgcolor=PRIMARY if mode == "terminal" else BG_SURFACE, color=ft.colors.WHITE,
+                shape=ft.RoundedRectangleBorder(radius=6),
+            )
+            manual_mode_btn.style = ft.ButtonStyle(
+                bgcolor=PRIMARY if mode == "manual" else BG_SURFACE, color=ft.colors.WHITE,
+                shape=ft.RoundedRectangleBorder(radius=6),
+            )
+            _update_reference_visibility()
+            _update_change()
+
+        terminal_mode_btn = ft.ElevatedButton(
+            "🖥 Terminal", height=38, expand=True,
+            on_click=lambda _: _set_card_mode("terminal"),
+            style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE,
+                                 shape=ft.RoundedRectangleBorder(radius=6)),
+        )
+        manual_mode_btn = ft.ElevatedButton(
+            "✍ Manual", height=38, expand=True,
+            on_click=lambda _: _set_card_mode("manual"),
+            style=ft.ButtonStyle(bgcolor=BG_SURFACE, color=ft.colors.WHITE,
+                                 shape=ft.RoundedRectangleBorder(radius=6)),
+        )
+        card_mode_row = ft.Row([terminal_mode_btn, manual_mode_btn], spacing=6, visible=False)
+
+        def _update_reference_visibility():
+            active = _card_manual_active()
+            reference_row.content = f_reference if active else ft.Container()
+            f_reference.visible = active
 
         confirm_btn = ft.ElevatedButton(
             "CONFIRMAR VENTA", icon=ft.icons.CHECK_CIRCLE,
@@ -1636,13 +1721,17 @@ def pos_view(page: ft.Page, app_state: dict):
             elif method in ("card", "transfer"):
                 amount_display.value = f"{currency}{float(total_d):.2f}"
                 label = "tarjeta" if method == "card" else "transferencia"
-                ref   = f_reference.value.strip()
-                if ref:
-                    change_display.value = f"Ref: {ref}"
+                if method == "card" and _has_clip_terminal() and pay_state["card_mode"] == "terminal":
+                    change_display.value = "🖥 Se enviará el cobro a la terminal"
                     change_display.color = PRIMARY_LT
                 else:
-                    change_display.value = f"Pago exacto con {label}"
-                    change_display.color = PRIMARY_LT
+                    ref = f_reference.value.strip()
+                    if ref:
+                        change_display.value = f"Ref: {ref}"
+                        change_display.color = PRIMARY_LT
+                    else:
+                        change_display.value = f"Pago exacto con {label}"
+                        change_display.color = PRIMARY_LT
 
             elif method == "mixed":
                 # El monto con tarjeta se ingresa; el efectivo = total - tarjeta
@@ -1767,13 +1856,16 @@ def pos_view(page: ft.Page, app_state: dict):
             f_card_amount.visible   = m == "mixed"
             if m == "mixed":
                 f_card_amount.value = "0.00"
-            # Campo referencia (tarjeta o transferencia)
-            reference_row.content   = f_reference if m in ("card", "transfer") else ft.Container()
-            f_reference.visible     = m in ("card", "transfer")
-            f_reference.value       = ""
-            f_reference.label       = ("N° de aprobación / referencia de tarjeta"
-                                       if m == "card" else
-                                       "Referencia de transferencia (CLABE, folio...)")
+            # Sub-selector Terminal/Manual — solo Tarjeta con terminal asignada a la caja
+            card_mode_row.visible = (m == "card" and _has_clip_terminal())
+            if card_mode_row.visible:
+                _set_card_mode(pay_state["card_mode"])
+            # Campo referencia (tarjeta manual, tarjeta sin terminal, o transferencia)
+            f_reference.value = ""
+            f_reference.label = ("N° de aprobación / referencia de tarjeta"
+                                 if m == "card" else
+                                 "Referencia de transferencia (CLABE, folio...)")
+            _update_reference_visibility()
             _update_change()
 
         for mid, mlabel, micon in [
@@ -1864,6 +1956,7 @@ def pos_view(page: ft.Page, app_state: dict):
                         color=ft.colors.WHITE),
                 ft.Row([method_buttons["cash"], method_buttons["card"]], spacing=6),
                 ft.Row([method_buttons["transfer"], method_buttons["mixed"]], spacing=6),
+                card_mode_row,
                 ft.Divider(color=ft.colors.WHITE12),
                 total_display,
                 ft.Container(height=4),
@@ -1925,8 +2018,12 @@ def pos_view(page: ft.Page, app_state: dict):
                 cash_a = total_d; card_a = Decimal("0")
                 change = Decimal("0"); pay_total = total_d
 
-            # Construir notas incluyendo referencia si aplica
-            ref_val   = f_reference.value.strip() if method in ("card", "transfer") else ""
+            use_terminal = (method == "card" and _has_clip_terminal()
+                            and pay_state["card_mode"] == "terminal")
+
+            # Construir notas incluyendo referencia si aplica (la terminal genera
+            # su propia referencia — no se le pide una manual al cajero)
+            ref_val   = f_reference.value.strip() if (method in ("card", "transfer") and not use_terminal) else ""
             notes_val = f_notes.value.strip()
             notes_parts = []
             if ref_val:
@@ -1940,58 +2037,38 @@ def pos_view(page: ft.Page, app_state: dict):
             loading_ring.visible = True
             page.update()
 
-            try:
-                items_payload = [
-                    {
-                        "product_id":   ci["product"]["id"],
-                        "quantity":     ci["qty"],
-                        "unit_price":   ci["unit_price"],
-                        "discount_pct": ci["discount_pct"],
-                    }
-                    for ci in cart
-                ]
-                sale_data = {
-                    "session_id":      app_state.get("session_id"),
-                    "customer_name":   f_customer.value.strip() or None,
-                    "customer_tax_id": f_tax_id.value.strip() or None,
-                    "items":           items_payload,
-                    "payment_method":  method if method != "mixed" else "mixed",
-                    "payment_amount":  float(pay_total),
-                    "discount_amount": float(discount_amount),
-                    # cash_tendered = dinero físico que entra a la caja
-                    # efectivo: el monto recibido (incluye el cambio a devolver)
-                    # tarjeta/transferencia: 0
-                    # mixto: solo la parte en efectivo (total - tarjeta)
-                    "cash_tendered":   float(cash_a),
-                    "notes":           final_notes,
+            items_payload = [
+                {
+                    "product_id":   ci["product"]["id"],
+                    "quantity":     ci["qty"],
+                    "unit_price":   ci["unit_price"],
+                    "discount_pct": ci["discount_pct"],
                 }
+                for ci in cart
+            ]
+            sale_data = {
+                "session_id":      app_state.get("session_id"),
+                "customer_name":   f_customer.value.strip() or None,
+                "customer_tax_id": f_tax_id.value.strip() or None,
+                "items":           items_payload,
+                "payment_method":  method if method != "mixed" else "mixed",
+                "payment_amount":  float(pay_total),
+                "discount_amount": float(discount_amount),
+                # cash_tendered = dinero físico que entra a la caja
+                # efectivo: el monto recibido (incluye el cambio a devolver)
+                # tarjeta/transferencia: 0
+                # mixto: solo la parte en efectivo (total - tarjeta)
+                "cash_tendered":   float(cash_a),
+                "notes":           final_notes,
+            }
+
+            if use_terminal:
+                _start_clip_payment(sale_data)
+                return
+
+            try:
                 sale = api.create_sale(sale_data)
-                last_sale.clear()
-                last_sale.update(sale)
-                last_sale["_change"] = float(change)
-                last_sale["_currency"] = currency
-
-                # Imprimir ticket
-                try:
-                    from services.printer import TicketPrinter
-                    tp = TicketPrinter(api.get_config_map())
-                    if tp.enabled and not tp.print_ticket(sale):
-                        _snack(f"⚠ No se pudo imprimir el ticket: {tp.last_error}", WARNING)
-                except Exception as ex:
-                    _snack(f"⚠ No se pudo imprimir el ticket: {ex}", WARNING)
-
-                # Abrir cajón si la venta involucra efectivo
-                if method in ("cash", "mixed"):
-                    try:
-                        from services.printer import TicketPrinter
-                        tp = TicketPrinter(api.get_config_map())
-                        tp.open_drawer()
-                    except Exception:
-                        pass
-
-                cart.clear()
-                _switch("success")
-
+                _finalize_and_show_success(sale, change, method)
             except APIError as ex:
                 _snack(str(ex), ERROR)
             except Exception as ex:
@@ -2000,6 +2077,33 @@ def pos_view(page: ft.Page, app_state: dict):
                 confirm_btn.disabled = False
                 loading_ring.visible = False
                 page.update()
+
+        def _start_clip_payment(sale_data: dict):
+            """Envía el cobro a la terminal Clip y muestra la pantalla de espera.
+            El carrito NO se limpia aquí — solo _finalize_and_show_success lo hace,
+            una vez que el pago se confirme como aprobado."""
+            try:
+                payment = api.create_clip_payment({
+                    "sale_payload": sale_data,
+                    "tip_amount": 0.0,
+                })
+            except APIError as ex:
+                _snack(str(ex), ERROR)
+                confirm_btn.disabled = False
+                loading_ring.visible = False
+                page.update()
+                return
+            except Exception as ex:
+                _snack(f"Error inesperado: {ex}", ERROR)
+                confirm_btn.disabled = False
+                loading_ring.visible = False
+                page.update()
+                return
+
+            pending_payment.clear()
+            pending_payment.update(payment)
+            pending_payment["_currency"] = currency
+            _switch("waiting_terminal")
 
         confirm_btn.on_click = confirm_sale
 
@@ -2089,6 +2193,113 @@ def pos_view(page: ft.Page, app_state: dict):
                 ),
             ),
         ])
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # ── PANTALLA DE ESPERA — COBRO CON TERMINAL CLIP ─────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _build_waiting_terminal():
+        kb_callbacks["waiting_terminal"] = None
+        stop_flag = {"stop": False}
+        amount = float(pending_payment.get("amount", 0) or 0)
+        cur    = pending_payment.get("_currency", currency)
+
+        status_text = ft.Text("Esperando confirmación de la terminal...", size=16,
+                              color=ft.colors.WHITE70, text_align=ft.TextAlign.CENTER)
+        amount_text = ft.Text(f"{cur}{amount:.2f}", size=32, weight=ft.FontWeight.BOLD,
+                              color=ft.colors.WHITE)
+        cancel_btn = ft.OutlinedButton(
+            "Cancelar cobro", icon=ft.icons.CLOSE, visible=True,
+            style=ft.ButtonStyle(color=ERROR, side=ft.BorderSide(1, ERROR)),
+        )
+
+        def _handle_status(result: dict) -> bool:
+            """Devuelve True cuando el ciclo de espera debe terminar."""
+            status = result.get("status")
+            if status == "approved":
+                sale = result.get("sale")
+                if sale:
+                    stop_flag["stop"] = True
+                    _finalize_and_show_success(sale, Decimal("0"), "card")
+                    return True
+                if result.get("error_message"):
+                    # Caso raro: Clip aprobó el cobro (dinero real capturado) pero
+                    # la venta interna no pudo crearse (ej. cambió el stock
+                    # mientras se esperaba). No se reintenta automáticamente para
+                    # evitar cobrar dos veces — requiere revisión manual.
+                    stop_flag["stop"] = True
+                    status_text.value = (
+                        "⚠ El pago fue aprobado por la terminal pero no se pudo "
+                        "registrar la venta. Avisa a un administrador antes de "
+                        "continuar; no vuelvas a cobrar este carrito con terminal."
+                    )
+                    status_text.color = ERROR
+                    cancel_btn.text = "Volver"
+                    page.update()
+                    return True
+                return False  # aprobado; la venta se está creando, se confirma en el próximo tick
+            if status in ("declined", "cancelled", "error"):
+                stop_flag["stop"] = True
+                label = {"declined": "Pago declinado", "cancelled": "Pago cancelado",
+                        "error": "Error en el pago"}.get(status, status)
+                detail = result.get("error_message") or ""
+                status_text.value = label + (f" — {detail}" if detail else "")
+                status_text.color = ERROR
+                page.update()
+                import time
+                time.sleep(2)
+                _switch("payment")
+                return True
+            return False
+
+        def poll_loop():
+            import time
+            while not stop_flag["stop"]:
+                time.sleep(1.5)
+                if stop_flag["stop"]:
+                    return
+                try:
+                    result = api.get_clip_payment_status(pending_payment["id"])
+                except Exception:
+                    continue   # error transitorio de red; el próximo tick reintenta
+                if _handle_status(result):
+                    return
+
+        def cancel_wait(_):
+            stop_flag["stop"] = True
+            try:
+                api.cancel_clip_payment(pending_payment["id"])
+            except Exception:
+                pass   # si ya no se puede cancelar (aprobado/declinado), solo se vuelve
+            _switch("payment")
+
+        cancel_btn.on_click = cancel_wait
+
+        def _waiting_keyboard(e: ft.KeyboardEvent):
+            if not app_state.get("pos_active") or state["mode"] != "waiting_terminal":
+                return
+            if e.key == "Escape":
+                cancel_wait(None)
+        kb_callbacks["waiting_terminal"] = _waiting_keyboard
+
+        page.run_thread(poll_loop)
+
+        return ft.Container(
+            expand=True, bgcolor=BG_DARK, alignment=ft.alignment.center,
+            content=ft.Column(
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=16,
+                controls=[
+                    ft.Icon(ft.icons.POINT_OF_SALE, size=64, color=PRIMARY),
+                    ft.ProgressRing(color=PRIMARY, width=48, height=48),
+                    status_text,
+                    amount_text,
+                    ft.Text("Sigue las instrucciones en la terminal", size=13,
+                           color=ft.colors.WHITE54),
+                    ft.Container(height=8),
+                    cancel_btn,
+                ],
+            ),
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # ── PANTALLA DE ÉXITO / TICKET ────────────────────────────────────────────

@@ -132,9 +132,10 @@ def main(page: ft.Page):
             if chosen:
                 app_state["session_id"]   = chosen["id"]
                 app_state["session_info"] = {
-                    "id":       chosen["id"],
-                    "register": chosen["register"]["name"],
-                    "cashier":  chosen["cashier"]["full_name"],
+                    "id":                chosen["id"],
+                    "register":          chosen["register"]["name"],
+                    "cashier":           chosen["cashier"]["full_name"],
+                    "clip_terminal_id":  chosen["register"].get("clip_terminal_id"),
                 }
             else:
                 app_state["session_id"]   = None

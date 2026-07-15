@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # Ejemplo: Cuba (UTC-5) -> -5
     TIMEZONE_OFFSET_HOURS: float = -5
 
+    # ── Terminal de pago Clip PinPad ────────────────────────────────────────────
+    # Nunca se exponen vía AppConfig/`/config/map` (leído por cualquier cajero) —
+    # solo aquí, igual que SECRET_KEY/DB_PASSWORD.
+    CLIP_API_KEY: str = ""
+    CLIP_API_SECRET: str = ""
+    CLIP_API_BASE_URL: str = "https://api.payclip.io/f2f/pinpad/v1"
+
     model_config = {"env_file": ".env"}
 
 

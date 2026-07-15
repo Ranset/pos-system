@@ -52,6 +52,16 @@ CONFIG_GROUPS = [
         ],
     },
     {
+        "title": "🖥️ Terminal de Pago Clip",
+        "category": "clip",
+        "icon": ft.icons.POINT_OF_SALE,
+        "fields": [
+            ("clip.enabled",     "Habilitar cobro con terminal Clip en el POS", "bool", "true"),
+            ("clip.webhook_url", "URL base del túnel (ej. https://xxxx.trycloudflare.com, "
+                                 "sin /api/webhooks/clip — se agrega solo)", "text", ""),
+        ],
+    },
+    {
         "title": "🖨️ Impresora y Cajón",
         "category": "printer",
         "icon": ft.icons.PRINT,
@@ -449,6 +459,29 @@ def settings_view(page: ft.Page, app_state: dict):
             ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
         )
 
+        current_terminal_id = reg.get("clip_terminal_id") if is_edit else None
+        f_clip_terminal = ft.Dropdown(
+            label="Terminal Clip asignada (opcional)",
+            value=str(current_terminal_id) if current_terminal_id else "",
+            color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+            options=[ft.dropdown.Option(key="", text="(Ninguna — solo cobro manual)")] + [
+                ft.dropdown.Option(key=str(t["id"]), text=f"{t['name']} ({t['serial_number']})")
+                for t in clip_terminals_data if t.get("is_active")
+            ],
+        )
+        clip_note = ft.Container(
+            bgcolor=PRIMARY + "1A", border_radius=8,
+            padding=ft.padding.all(10),
+            content=ft.Row([
+                ft.Icon(ft.icons.INFO_OUTLINE, color=PRIMARY_LT, size=16),
+                ft.Text(
+                    "Terminal física Clip PinPad conectada a esta caja para cobro automático\n"
+                    "con tarjeta. Se administran en la pestaña 'Terminales Clip'.",
+                    size=11, color=ft.colors.WHITE54,
+                ),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
+        )
+
         err_text = ft.Text("", color=ERROR, size=12)
 
         def save(e):
@@ -459,9 +492,10 @@ def settings_view(page: ft.Page, app_state: dict):
                 return
             try:
                 payload = {
-                    "name":         f_name.value.strip(),
-                    "location":     f_location.value.strip() or "",
-                    "printer_name": f_printer.value.strip() or None,
+                    "name":              f_name.value.strip(),
+                    "location":          f_location.value.strip() or "",
+                    "printer_name":      f_printer.value.strip() or None,
+                    "clip_terminal_id":  int(f_clip_terminal.value) if f_clip_terminal.value else None,
                 }
                 if is_edit:
                     api.update_register(reg["id"], payload)
@@ -485,11 +519,13 @@ def settings_view(page: ft.Page, app_state: dict):
             ], spacing=8),
             content=ft.Container(
                 width=420,
-                content=ft.Column(spacing=14, controls=[
+                content=ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, controls=[
                     f_name,
                     f_location,
                     f_printer,
                     printer_note,
+                    f_clip_terminal,
+                    clip_note,
                     err_text,
                 ]),
             ),
@@ -719,10 +755,371 @@ def settings_view(page: ft.Page, app_state: dict):
         page.update()
 
     # ─────────────────────────────────────────────────────────────────────────
+    # PESTAÑA — Terminales de Pago Clip
+    # ─────────────────────────────────────────────────────────────────────────
+
+    clip_terminals_data: list = []
+    clip_terminals_list  = ft.ListView(expand=True, spacing=8, padding=8)
+    clip_status_text     = ft.Text("", color=ft.colors.WHITE54, size=12)
+
+    def load_clip_terminals(e=None):
+        nonlocal clip_terminals_data
+        try:
+            clip_terminals_data = api.get_all_clip_terminals()
+            _render_clip_terminals()
+        except APIError as ex:
+            _show_snack(str(ex), ERROR)
+
+    def _render_clip_terminals():
+        clip_terminals_list.controls.clear()
+
+        if not clip_terminals_data:
+            clip_terminals_list.controls.append(ft.Container(
+                alignment=ft.alignment.center, padding=40,
+                content=ft.Column(horizontal_alignment=ft.CrossAxisAlignment.CENTER, controls=[
+                    ft.Icon(ft.icons.CREDIT_CARD_OFF, size=56, color=ft.colors.WHITE24),
+                    ft.Text("No hay terminales Clip registradas", color=ft.colors.WHITE54, size=15),
+                    ft.Text("Registra la terminal física para poder asignarla a una caja.",
+                            color=ft.colors.WHITE38, size=12),
+                ]),
+            ))
+            clip_status_text.value = "0 terminales"
+            page.update()
+            return
+
+        for term in clip_terminals_data:
+            is_active = term.get("is_active", True)
+
+            def make_edit(t):   return lambda _: open_terminal_dialog(t)
+            def make_toggle(t): return lambda _: toggle_terminal(t)
+            def make_delete(t): return lambda _: delete_terminal(t)
+
+            badge = ft.Container(
+                content=ft.Text("Activa" if is_active else "Inactiva",
+                                size=10, color=ft.colors.WHITE),
+                bgcolor=SUCCESS + "55" if is_active else BG_SURFACE,
+                border_radius=4, padding=ft.padding.symmetric(2, 8),
+            )
+
+            clip_terminals_list.controls.append(ft.Container(
+                bgcolor=BG_CARD, border_radius=10,
+                border=ft.border.all(1, (SUCCESS if is_active else ft.colors.WHITE12) + ("44" if is_active else "")),
+                padding=ft.padding.symmetric(horizontal=16, vertical=14),
+                content=ft.Row([
+                    ft.Container(
+                        width=44, height=44, border_radius=22,
+                        bgcolor=(PRIMARY + "33") if is_active else BG_SURFACE,
+                        border=ft.border.all(2, PRIMARY if is_active else ft.colors.WHITE24),
+                        alignment=ft.alignment.center,
+                        content=ft.Icon(
+                            ft.icons.CREDIT_CARD if is_active else ft.icons.CREDIT_CARD_OFF,
+                            color=PRIMARY if is_active else ft.colors.WHITE38,
+                            size=22,
+                        ),
+                    ),
+                    ft.Column(expand=True, spacing=4, controls=[
+                        ft.Row([
+                            ft.Text(term.get("name", ""), color=ft.colors.WHITE, size=15,
+                                    weight=ft.FontWeight.W_600),
+                            badge,
+                            ft.Text(f"ID: {term.get('id','')}", color=ft.colors.WHITE38, size=11),
+                        ], spacing=8),
+                        ft.Row([
+                            ft.Icon(ft.icons.TAG, size=13, color=ft.colors.WHITE38),
+                            ft.Text(f"Serie: {term.get('serial_number','')}",
+                                    size=12, color=ft.colors.WHITE54),
+                        ], spacing=4),
+                    ]),
+                    ft.Row(spacing=4, controls=[
+                        ft.IconButton(ft.icons.EDIT_OUTLINED, icon_color=PRIMARY_LT,
+                                      icon_size=20, on_click=make_edit(term), tooltip="Editar"),
+                        ft.IconButton(
+                            ft.icons.TOGGLE_ON if is_active else ft.icons.TOGGLE_OFF,
+                            icon_color=SUCCESS if is_active else ERROR,
+                            icon_size=22, tooltip="Activar / Desactivar",
+                            on_click=make_toggle(term),
+                        ),
+                        ft.IconButton(
+                            ft.icons.DELETE_FOREVER,
+                            icon_color=ft.colors.RED_700,
+                            icon_size=20, tooltip="Eliminar terminal",
+                            on_click=make_delete(term),
+                        ),
+                    ]),
+                ], spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ))
+
+        clip_status_text.value = (
+            f"{sum(1 for t in clip_terminals_data if t.get('is_active'))} activa(s) · "
+            f"{sum(1 for t in clip_terminals_data if not t.get('is_active'))} inactiva(s)"
+        )
+        page.update()
+
+    def open_terminal_dialog(term: dict = None):
+        is_edit = term is not None
+
+        f_term_name = ft.TextField(
+            label="Nombre de la terminal *",
+            hint_text="Ej: Terminal Caja 1, Terminal Mostrador...",
+            value=term.get("name", "") if is_edit else "",
+            color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+            autofocus=True,
+        )
+        f_term_serial = ft.TextField(
+            label="Número de serie *",
+            hint_text="Ej: N500W5F5929 (impreso en la terminal física)",
+            value=term.get("serial_number", "") if is_edit else "",
+            color=ft.colors.WHITE, bgcolor=BG_SURFACE, border_color=PRIMARY,
+        )
+
+        serial_note = ft.Container(
+            bgcolor=PRIMARY + "1A", border_radius=8,
+            padding=ft.padding.all(10),
+            content=ft.Row([
+                ft.Icon(ft.icons.INFO_OUTLINE, color=PRIMARY_LT, size=16),
+                ft.Text(
+                    "El número de serie debe coincidir exactamente con el de la\n"
+                    "terminal física — Clip lo usa para dirigir el cobro al dispositivo correcto.",
+                    size=11, color=ft.colors.WHITE54,
+                ),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
+        )
+
+        err_text = ft.Text("", color=ERROR, size=12)
+
+        def save(e):
+            err_text.value = ""
+            if not f_term_name.value.strip() or not f_term_serial.value.strip():
+                err_text.value = "El nombre y el número de serie son obligatorios"
+                page.update()
+                return
+            try:
+                payload = {
+                    "name":          f_term_name.value.strip(),
+                    "serial_number": f_term_serial.value.strip(),
+                }
+                if is_edit:
+                    api.update_clip_terminal(term["id"], payload)
+                    _show_snack(f"✅ Terminal '{payload['name']}' actualizada")
+                else:
+                    api.create_clip_terminal(payload)
+                    _show_snack(f"✅ Terminal '{payload['name']}' creada exitosamente")
+                dlg.open = False
+                page.update()
+                load_clip_terminals()
+            except APIError as ex:
+                err_text.value = str(ex)
+                page.update()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.icons.CREDIT_CARD, color=PRIMARY),
+                ft.Text("Editar Terminal" if is_edit else "Nueva Terminal Clip",
+                        weight=ft.FontWeight.BOLD),
+            ], spacing=8),
+            content=ft.Container(
+                width=420,
+                content=ft.Column(spacing=14, controls=[
+                    f_term_name,
+                    f_term_serial,
+                    serial_note,
+                    err_text,
+                ]),
+            ),
+            actions=[
+                ft.TextButton("Cancelar",
+                              on_click=lambda _: setattr(dlg, "open", False) or page.update()),
+                ft.ElevatedButton(
+                    "Guardar", icon=ft.icons.SAVE, on_click=save,
+                    style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE),
+                ),
+            ],
+        )
+        page.dialog = dlg
+        dlg.open = True
+        page.update()
+
+    def toggle_terminal(term: dict):
+        new_state = not term.get("is_active", True)
+        action    = "activar" if new_state else "desactivar"
+
+        def confirm(_):
+            try:
+                api.update_clip_terminal(term["id"], {"is_active": new_state})
+                _show_snack(
+                    f"✅ Terminal '{term.get('name','')}' {'activada' if new_state else 'desactivada'}"
+                )
+                load_clip_terminals()
+            except APIError as ex:
+                _show_snack(str(ex), ERROR)
+            page.dialog.open = False
+            page.update()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text(f"{'Activar' if new_state else 'Desactivar'} terminal"),
+            content=ft.Column(spacing=8, controls=[
+                ft.Text(f"¿Deseas {action} la terminal «{term.get('name', '')}»?",
+                        color=ft.colors.WHITE70),
+                ft.Text(
+                    "No aparecerá disponible para asignar a ninguna caja mientras esté inactiva."
+                    if not new_state else
+                    "Volverá a estar disponible para asignarse a una caja.",
+                    color=ft.colors.WHITE54, size=12,
+                ),
+            ]),
+            actions=[
+                ft.TextButton("Cancelar",
+                              on_click=lambda _: setattr(page.dialog, "open", False) or page.update()),
+                ft.ElevatedButton(
+                    "Confirmar", on_click=confirm,
+                    style=ft.ButtonStyle(
+                        bgcolor=SUCCESS if new_state else ERROR,
+                        color=ft.colors.WHITE,
+                    ),
+                ),
+            ],
+        )
+        page.dialog = dlg
+        dlg.open = True
+        page.update()
+
+    def delete_terminal(term: dict):
+        name = term.get("name", "")
+
+        def confirm(_):
+            try:
+                api.delete_clip_terminal(term["id"])
+                _show_snack(f"🗑  Terminal '{name}' eliminada permanentemente")
+                load_clip_terminals()
+                page.dialog.open = False
+                page.update()
+            except APIError as ex:
+                page.dialog.open = False
+                page.update()
+                if ex.status_code == 409:
+                    _open_fallback_dialog(term)
+                else:
+                    _show_snack(str(ex), ERROR)
+
+        def _open_fallback_dialog(t: dict):
+            def deactivate(_):
+                try:
+                    api.update_clip_terminal(t["id"], {"is_active": False})
+                    _show_snack(f"Terminal '{t.get('name','')}' desactivada")
+                    load_clip_terminals()
+                except APIError as ex2:
+                    _show_snack(str(ex2), ERROR)
+                page.dialog.open = False
+                page.update()
+
+            fallback = ft.AlertDialog(
+                modal=True,
+                title=ft.Row([
+                    ft.Icon(ft.icons.INFO_OUTLINE, color=WARNING),
+                    ft.Text("No se puede eliminar", weight=ft.FontWeight.BOLD),
+                ], spacing=8),
+                content=ft.Container(
+                    width=400,
+                    content=ft.Column(spacing=12, controls=[
+                        ft.Container(
+                            bgcolor=WARNING + "1A", border_radius=8,
+                            padding=ft.padding.all(12),
+                            content=ft.Text(
+                                f"'{t.get('name','')}' tiene cobros registrados en su historial. "
+                                "Eliminarla rompería esos registros.",
+                                size=13, color=ft.colors.WHITE70,
+                            ),
+                        ),
+                        ft.Text(
+                            "¿Deseas desactivarla en su lugar?\n"
+                            "No se podrá asignar a ninguna caja pero el historial se conserva.",
+                            size=13, color=ft.colors.WHITE70,
+                        ),
+                    ]),
+                ),
+                actions=[
+                    ft.TextButton("Cancelar",
+                                  on_click=lambda _: setattr(page.dialog,"open",False) or page.update()),
+                    ft.ElevatedButton(
+                        "Desactivar terminal", icon=ft.icons.TOGGLE_OFF,
+                        on_click=deactivate,
+                        style=ft.ButtonStyle(bgcolor=WARNING, color=ft.colors.BLACK),
+                    ),
+                ],
+            )
+            page.dialog = fallback
+            fallback.open = True
+            page.update()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.icons.DELETE_FOREVER, color=ERROR, size=22),
+                ft.Text("Eliminar terminal", weight=ft.FontWeight.BOLD, color=ERROR),
+            ], spacing=8),
+            content=ft.Container(
+                width=400,
+                content=ft.Column(spacing=12, controls=[
+                    ft.Container(
+                        bgcolor=ERROR + "1A", border_radius=8,
+                        padding=ft.padding.all(12),
+                        content=ft.Column(spacing=4, controls=[
+                            ft.Row([
+                                ft.Icon(ft.icons.CREDIT_CARD, color=ft.colors.WHITE60, size=16),
+                                ft.Text(name, size=14, color=ft.colors.WHITE,
+                                        weight=ft.FontWeight.BOLD),
+                            ], spacing=6),
+                            ft.Text(f"ID: {term.get('id','—')}  •  Serie: {term.get('serial_number','—')}",
+                                    size=12, color=ft.colors.WHITE54),
+                        ]),
+                    ),
+                    ft.Container(
+                        bgcolor=BG_SURFACE, border_radius=8,
+                        padding=ft.padding.all(10),
+                        content=ft.Column(spacing=4, controls=[
+                            ft.Row([
+                                ft.Icon(ft.icons.INFO_OUTLINE, color=PRIMARY_LT, size=15),
+                                ft.Text("¿Qué pasa al eliminar?",
+                                        size=12, color=ft.colors.WHITE70,
+                                        weight=ft.FontWeight.W_600),
+                            ], spacing=6),
+                            ft.Text(
+                                "• La terminal desaparece del sistema permanentemente\n"
+                                "• Si tiene historial de cobros, se sugerirá desactivar en su lugar\n"
+                                "• Debes desasignarla de cualquier caja antes de eliminarla\n"
+                                "• Esta acción no se puede deshacer",
+                                size=12, color=ft.colors.WHITE54,
+                            ),
+                        ]),
+                    ),
+                ]),
+            ),
+            actions=[
+                ft.TextButton("Cancelar",
+                              on_click=lambda _: setattr(page.dialog,"open",False) or page.update()),
+                ft.ElevatedButton(
+                    "Sí, eliminar permanentemente",
+                    icon=ft.icons.DELETE_FOREVER,
+                    on_click=confirm,
+                    style=ft.ButtonStyle(bgcolor=ERROR, color=ft.colors.WHITE),
+                ),
+            ],
+        )
+        page.dialog = dlg
+        dlg.open = True
+        page.update()
+
+    def refresh_clip_terminals(e=None):
+        load_clip_terminals()
+        page.update()
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Carga inicial
     # ─────────────────────────────────────────────────────────────────────────
     load_config()
     load_registers()
+    load_clip_terminals()
     stats_container.content = _stats_panel()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -842,6 +1239,51 @@ def settings_view(page: ft.Page, app_state: dict):
         ),
     )
 
+    # ── Tab: Terminales Clip ──────────────────────────────────────────────────
+    tab_clip = ft.Tab(
+        text="Terminales Clip",
+        icon=ft.icons.CREDIT_CARD,
+        content=ft.Column(
+            expand=True, spacing=0,
+            controls=[
+                ft.Container(
+                    padding=ft.padding.symmetric(horizontal=16, vertical=10),
+                    content=ft.Row([
+                        ft.Text("Terminales de Pago Clip", size=16, color=ft.colors.WHITE,
+                                weight=ft.FontWeight.BOLD, expand=True),
+                        clip_status_text,
+                        loading_icon_button(page, ft.icons.REFRESH, refresh_clip_terminals,
+                                            icon_color=PRIMARY, tooltip="Actualizar"),
+                        ft.ElevatedButton(
+                            "Nueva terminal", icon=ft.icons.ADD,
+                            on_click=lambda _: open_terminal_dialog(),
+                            style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.colors.WHITE),
+                        ),
+                    ], spacing=10),
+                ),
+                ft.Container(
+                    margin=ft.margin.symmetric(horizontal=16),
+                    bgcolor=BG_SURFACE, border_radius=8,
+                    padding=ft.padding.all(10),
+                    content=ft.Row([
+                        ft.Icon(ft.icons.INFO_OUTLINE, color=PRIMARY_LT, size=16),
+                        ft.Text(
+                            "Registra aquí cada terminal física Clip PinPad y luego asígnala a una "
+                            "caja en la pestaña 'Cajas Registradoras'. El cajero podrá elegir 'Cobro "
+                            "con terminal' al cobrar con tarjeta solo en cajas con terminal asignada.",
+                            size=12, color=ft.colors.WHITE54, expand=True,
+                        ),
+                    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
+                ),
+                ft.Container(height=8),
+                ft.Container(
+                    expand=True,
+                    padding=ft.padding.symmetric(horizontal=16),
+                    content=clip_terminals_list,
+                ),
+            ],
+        ),
+    )
 
     # ── Tab 3: Atajos de Teclado ──────────────────────────────────────────────
 
@@ -1636,7 +2078,7 @@ def settings_view(page: ft.Page, app_state: dict):
                     indicator_color=PRIMARY,
                     label_color=PRIMARY_LT,
                     unselected_label_color=ft.colors.WHITE54,
-                    tabs=[tab_config, tab_registers, tab_hotkeys, tab_database],
+                    tabs=[tab_config, tab_registers, tab_clip, tab_hotkeys, tab_database],
                 ),
             ],
         ),

@@ -66,6 +66,40 @@ def force_migrate(_=Depends(require_admin)):
                      "FOREIGN KEY (return_id) REFERENCES sale_returns(id) ON DELETE CASCADE,"
                      "FOREIGN KEY (product_id) REFERENCES products(id))"),
         },
+        {
+            "name": "clip_terminals table",
+            "sql":  ("CREATE TABLE IF NOT EXISTS clip_terminals ("
+                     "id INT AUTO_INCREMENT PRIMARY KEY,"
+                     "name VARCHAR(80) NOT NULL,"
+                     "serial_number VARCHAR(50) NOT NULL UNIQUE,"
+                     "is_active BOOLEAN DEFAULT TRUE,"
+                     "created_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                     "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)"),
+        },
+        {
+            "name": "cash_registers.clip_terminal_id",
+            "sql":  ("ALTER TABLE cash_registers ADD COLUMN clip_terminal_id INT NULL, "
+                     "ADD FOREIGN KEY (clip_terminal_id) REFERENCES clip_terminals(id)"),
+        },
+        {
+            "name": "clip_payments table",
+            "sql":  ("CREATE TABLE IF NOT EXISTS clip_payments ("
+                     "id INT AUTO_INCREMENT PRIMARY KEY,"
+                     "sale_id INT NULL, clip_terminal_id INT NOT NULL, cashier_id INT NOT NULL, session_id INT NULL,"
+                     "reference VARCHAR(60) NOT NULL UNIQUE, pinpad_request_id VARCHAR(100), "
+                     "transaction_id VARCHAR(100), merchant_id VARCHAR(100), receipt_number VARCHAR(50), "
+                     "authorization_code VARCHAR(50), card_brand VARCHAR(30), card_type VARCHAR(30), "
+                     "last4 VARCHAR(4), issuer VARCHAR(50), entry_mode VARCHAR(30), "
+                     "amount DECIMAL(10,2) NOT NULL, tip_amount DECIMAL(10,2) DEFAULT 0.00, amount_paid DECIMAL(10,2), "
+                     "status VARCHAR(20) DEFAULT 'pending', error_message TEXT, sale_payload TEXT, raw_response TEXT, "
+                     "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                     "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
+                     "approved_at DATETIME, last_synced_at DATETIME,"
+                     "FOREIGN KEY (sale_id) REFERENCES sales(id), "
+                     "FOREIGN KEY (clip_terminal_id) REFERENCES clip_terminals(id), "
+                     "FOREIGN KEY (cashier_id) REFERENCES users(id), "
+                     "FOREIGN KEY (session_id) REFERENCES cash_sessions(id))"),
+        },
     ]
     results = []
     with engine.connect() as conn:

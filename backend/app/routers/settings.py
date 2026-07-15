@@ -32,6 +32,9 @@ DEFAULT_CONFIGS = [
     ("fee.commission_card",     "0", "Comisión tarjeta (%)",        "fees"),
     ("fee.commission_transfer", "0", "Comisión transferencia (%)",  "fees"),
     ("fee.commission_mixed",    "0", "Comisión pago mixto (%)",     "fees"),
+    # Terminal de pago Clip PinPad (credenciales NUNCA aquí — ver Settings.CLIP_API_KEY/SECRET)
+    ("clip.enabled",     "true", "Habilitar cobro con terminal Clip en el POS", "clip"),
+    ("clip.webhook_url", "",     "URL base pública del backend (ej. túnel de Cloudflare) — se le agrega /api/webhooks/clip automáticamente", "clip"),
     # Impresora
     ("printer.enabled", "false", "Habilitar impresión automática", "printer"),
     ("printer.type", "usb", "Tipo: usb / serial / network", "printer"),

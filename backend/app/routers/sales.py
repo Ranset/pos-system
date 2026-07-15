@@ -51,12 +51,9 @@ def _get_commission_pct(db: Session, payment_method: PaymentMethod) -> Decimal:
         return Decimal("0")
 
 
-@router.post("/", response_model=SaleOut, status_code=201)
-def create_sale(
-    data: SaleCreate,
-    db: Session = Depends(get_db),
-    current=Depends(require_cashier),
-):
+def _create_sale_internal(db: Session, data: SaleCreate, current) -> Sale:
+    """Lógica atómica de registro de venta — reutilizada por el endpoint normal
+    (POST /sales/) y por ClipPinpadService cuando un cobro con terminal se aprueba."""
     if not data.items:
         raise HTTPException(400, "La venta debe tener al menos un producto")
 
@@ -194,6 +191,15 @@ def create_sale(
     db.commit()
     db.refresh(sale)
     return sale
+
+
+@router.post("/", response_model=SaleOut, status_code=201)
+def create_sale(
+    data: SaleCreate,
+    db: Session = Depends(get_db),
+    current=Depends(require_cashier),
+):
+    return _create_sale_internal(db, data, current)
 
 
 @router.get("/", response_model=List[SaleOut])
