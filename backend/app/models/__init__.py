@@ -264,7 +264,7 @@ class ClipPayment(Base):
 
     terminal = relationship("ClipTerminal")
     cashier = relationship("User")
-    sale = relationship("Sale")
+    sale = relationship("Sale", back_populates="clip_payment")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -299,6 +299,7 @@ class Sale(Base):
     cashier = relationship("User", back_populates="sales", foreign_keys=[cashier_id])
     session = relationship("CashSession", back_populates="sales")
     items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
+    clip_payment = relationship("ClipPayment", back_populates="sale", uselist=False)
 
 
 class SaleItem(Base):

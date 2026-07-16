@@ -325,6 +325,18 @@ class SaleItemOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ClipPaymentTicketInfo(BaseModel):
+    """Subconjunto de ClipPayment relevante para el ticket — evita anidar
+    ClipPaymentOut completo en SaleOut (que a su vez embebe SaleOut) para no
+    crear una referencia circular en los schemas."""
+    card_type: Optional[str] = None
+    last4: Optional[str] = None
+    issuer: Optional[str] = None
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
 class SaleOut(BaseModel):
     id: int
     folio: str
@@ -351,6 +363,7 @@ class SaleOut(BaseModel):
     notes: Optional[str]
     created_at: datetime
     items: List[SaleItemOut] = []
+    clip_payment: Optional[ClipPaymentTicketInfo] = None
 
     model_config = {"from_attributes": True}
 
@@ -398,7 +411,9 @@ class ClipPaymentOut(BaseModel):
     status: str
     error_message: Optional[str] = None
     card_brand: Optional[str] = None
+    card_type: Optional[str] = None
     last4: Optional[str] = None
+    issuer: Optional[str] = None
     created_at: datetime
     approved_at: Optional[datetime] = None
     sale: Optional[SaleOut] = None

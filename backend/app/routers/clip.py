@@ -204,7 +204,8 @@ def _load_payment_with_sale(db: Session, payment_id: int) -> Optional[ClipPaymen
     return (
         db.query(ClipPayment)
         .options(joinedload(ClipPayment.sale).joinedload(Sale.items),
-                 joinedload(ClipPayment.sale).joinedload(Sale.cashier))
+                 joinedload(ClipPayment.sale).joinedload(Sale.cashier),
+                 joinedload(ClipPayment.sale).joinedload(Sale.clip_payment))
         .filter(ClipPayment.id == payment_id)
         .first()
     )

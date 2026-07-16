@@ -82,6 +82,30 @@ class TicketPrinter:
     def _divider(self, char="-") -> str:
         return char * self.char_width
 
+    _CARD_TYPE_LABELS = {"credit": "Crédito", "debit": "Débito"}
+    _CLIP_STATUS_LABELS = {"approved": "Aprobado", "declined": "Declinado",
+                           "cancelled": "Cancelado", "error": "Error", "pending": "Pendiente"}
+
+    def _clip_payment_summary(self, sale: dict) -> Optional[dict]:
+        """Datos ya formateados del cobro con terminal Clip (tipo de tarjeta,
+        últimos 4 dígitos, banco emisor, estado), o None si la venta no se
+        pagó con terminal (efectivo, tarjeta manual, transferencia, mixto).
+        Acepta tanto "_clip_payment" (dato en memoria del flujo en vivo del
+        POS, ver pos.py) como "clip_payment" (campo de SaleOut al recargar
+        una venta ya existente desde el backend, ej. reimpresión en Ventas)."""
+        cp = sale.get("_clip_payment") or sale.get("clip_payment")
+        if not cp:
+            return None
+        card_type_raw = (cp.get("card_type") or "").lower()
+        last4 = cp.get("last4")
+        status_raw = (cp.get("status") or "").lower()
+        return {
+            "card_type": self._CARD_TYPE_LABELS.get(card_type_raw, cp.get("card_type") or "No disponible"),
+            "card_str": f"**** {last4}" if last4 else "No disponible",
+            "issuer": cp.get("issuer") or "No disponible",
+            "status": self._CLIP_STATUS_LABELS.get(status_raw, (cp.get("status") or "-").capitalize()),
+        }
+
     def print_ticket(self, sale: dict) -> bool:
         """Imprime el ticket de venta en impresora ESC/POS."""
         self._print_to_console(sale)   # siempre a consola
@@ -176,6 +200,17 @@ class TicketPrinter:
             total_row(f"Pago ({method_map.get(method, method)}):", paid)
             if change > 0:
                 total_row("Cambio:", change, bold=True)
+
+            clip_summary = self._clip_payment_summary(sale)
+            if clip_summary:
+                ptext(div() + "\n")
+                p.set(bold=True)
+                ptext("Terminal Clip\n")
+                p.set(bold=False)
+                ptext(f"Tipo de tarjeta: {clip_summary['card_type']}\n")
+                ptext(f"Tarjeta: {clip_summary['card_str']}\n")
+                ptext(f"Banco emisor: {clip_summary['issuer']}\n")
+                ptext(f"Estado: {clip_summary['status']}\n")
 
             # ── Pie ────────────────────────────────────────────────────────
             ptext(div("=") + "\n")
@@ -358,11 +393,13 @@ class TicketPrinter:
         uw = pw - mg * 2        # usable width = 70mm
         lh, slh = 5, 4          # line-height normal y small
 
-        items    = sale.get("items", [])
+        items       = sale.get("items", [])
+        clip_summary = self._clip_payment_summary(sale)
         # Estimar altura de página
         n_rows = (9                          # header
                   + len(items) * 2           # products
                   + 7                        # totals (incl. comisión)
+                  + (6 if clip_summary else 0)  # detalles de terminal Clip
                   + 4)                       # footer
         qr_extra_h = 40 if self.qr_content else 0   # título + código QR
         ph = max(n_rows * lh + mg * 2 + 10 + qr_extra_h, 90)
@@ -432,7 +469,7 @@ class TicketPrinter:
             if disc:
                 qty_txt += f"  -{disc:.0f}%"
             fnt(size=7)
-            pdf.set_text_color(110, 110, 110)
+            # pdf.set_text_color(110, 110, 110)
             pdf.cell(uw, slh, text=S(qty_txt), new_x="LMARGIN", new_y="NEXT")
             pdf.set_text_color(0, 0, 0)
 
@@ -469,6 +506,14 @@ class TicketPrinter:
             pdf.set_text_color(0, 130, 0)
             lr("Cambio:", f"{cur}{change:.2f}", size=9, bold=True, h=slh)
             pdf.set_text_color(0, 0, 0)
+
+        if clip_summary:
+            hrule(gap_before=2, gap_after=1)
+            center("Terminal Clip", size=8, bold=True, h=slh)
+            lr("Tipo de tarjeta:", clip_summary["card_type"], size=8, h=slh)
+            lr("Tarjeta:", clip_summary["card_str"], size=8, h=slh)
+            lr("Banco emisor:", clip_summary["issuer"], size=8, h=slh)
+            lr("Estado:", clip_summary["status"], size=8, h=slh)
 
         hrule(gap_before=2, gap_after=2)
 
@@ -586,6 +631,16 @@ class TicketPrinter:
         row(f"Pago ({method_map.get(method, method)}):", paid)
         if change > 0:
             row("Cambio:", change)
+
+        clip_summary = self._clip_payment_summary(sale)
+        if clip_summary:
+            print(div())
+            print("Terminal Clip")
+            print(f"Tipo de tarjeta: {clip_summary['card_type']}")
+            print(f"Tarjeta: {clip_summary['card_str']}")
+            print(f"Banco emisor: {clip_summary['issuer']}")
+            print(f"Estado: {clip_summary['status']}")
+
         print(div("="))
         print(self._center(self.footer_text))
         if self.qr_content:

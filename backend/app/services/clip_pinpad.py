@@ -193,7 +193,7 @@ class ClipPinpadService(PaymentTerminalService):
         payment.merchant_id = detail.get("merchant_id")
         payment.entry_mode = detail.get("entry_mode")
         card = (detail.get("payment_method") or {}).get("card") or {}
-        payment.card_brand = detail.get("payment_method", {}).get("type") or payment.card_brand
+        payment.card_type = (detail.get("payment_method") or {}).get("type") or payment.card_type
         payment.last4 = card.get("last_digits") or payment.last4
         payment.issuer = card.get("issuer") or payment.issuer
         if detail.get("approved_at"):

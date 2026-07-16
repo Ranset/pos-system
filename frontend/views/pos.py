@@ -114,12 +114,16 @@ def pos_view(page: ft.Page, app_state: dict):
         page.on_keyboard_event = _pos_dispatcher
         page.update()
 
-    def _finalize_and_show_success(sale: dict, change: Decimal, method: str):
+    def _finalize_and_show_success(sale: dict, change: Decimal, method: str, clip_payment: dict = None):
         """Cola común tras registrar una venta (efectivo/tarjeta manual/tarjeta
         con terminal): guarda last_sale, imprime, abre el cajón si aplica, limpia
         el carrito y muestra la pantalla de éxito. El carrito NUNCA se limpia
         antes de este punto — si un cobro con terminal se cancela o es
-        declinado, el carrito sigue intacto para reintentar."""
+        declinado, el carrito sigue intacto para reintentar.
+        clip_payment (opcional): {card_type, last4, issuer, status} del cobro con
+        terminal Clip, para mostrar/imprimir en el ticket — None si la venta no
+        se pagó con terminal (efectivo, tarjeta manual, transferencia, mixto)."""
+        sale["_clip_payment"] = clip_payment
         last_sale.clear()
         last_sale.update(sale)
         last_sale["_change"] = float(change)
@@ -2220,7 +2224,13 @@ def pos_view(page: ft.Page, app_state: dict):
                 sale = result.get("sale")
                 if sale:
                     stop_flag["stop"] = True
-                    _finalize_and_show_success(sale, Decimal("0"), "card")
+                    clip_payment = {
+                        "card_type": result.get("card_type"),
+                        "last4": result.get("last4"),
+                        "issuer": result.get("issuer"),
+                        "status": result.get("status"),
+                    }
+                    _finalize_and_show_success(sale, Decimal("0"), "card", clip_payment)
                     return True
                 if result.get("error_message"):
                     # Caso raro: Clip aprobó el cobro (dinero real capturado) pero
@@ -2395,6 +2405,26 @@ def pos_view(page: ft.Page, app_state: dict):
                    f"{cur}{float(last_sale.get('payment_amount',0)):.2f}")
         if change > 0:
             ticket_row("Cambio:", f"{cur}{change:.2f}", bold=True, color=ft.colors.GREEN)
+
+        clip_payment = last_sale.get("_clip_payment")
+        if clip_payment:
+            CARD_TYPE_LABELS = {"credit": "Crédito", "debit": "Débito"}
+            STATUS_LABELS = {"approved": "Aprobado", "declined": "Declinado",
+                             "cancelled": "Cancelado", "error": "Error", "pending": "Pendiente"}
+            card_type_raw = (clip_payment.get("card_type") or "").lower()
+            card_type_label = CARD_TYPE_LABELS.get(card_type_raw, clip_payment.get("card_type") or "No disponible")
+            last4 = clip_payment.get("last4")
+            issuer = clip_payment.get("issuer") or "No disponible"
+            status_raw = (clip_payment.get("status") or "").lower()
+            status_label = STATUS_LABELS.get(status_raw, (clip_payment.get("status") or "—").capitalize())
+
+            ticket_row("", divider=True)
+            ticket_row("Terminal Clip:", "", bold=True)
+            ticket_row("Tipo de tarjeta:", card_type_label)
+            ticket_row("Tarjeta:", f"**** {last4}" if last4 else "No disponible")
+            ticket_row("Banco emisor:", issuer)
+            ticket_row("Estado:", status_label)
+
         ticket_row("", divider=True)
 
         ticket_footer = ft.Container(

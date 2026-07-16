@@ -214,7 +214,7 @@ def list_sales(
 ):
     from datetime import datetime
     q = db.query(Sale).options(
-        joinedload(Sale.items), joinedload(Sale.cashier)
+        joinedload(Sale.items), joinedload(Sale.cashier), joinedload(Sale.clip_payment)
     )
     if start_date:
         q = q.filter(Sale.created_at >= datetime.combine(start_date, datetime.min.time()))
@@ -231,7 +231,7 @@ def list_sales(
 def get_sale(sale_id: int, db: Session = Depends(get_db), _=Depends(require_cashier)):
     sale = (
         db.query(Sale)
-        .options(joinedload(Sale.items), joinedload(Sale.cashier))
+        .options(joinedload(Sale.items), joinedload(Sale.cashier), joinedload(Sale.clip_payment))
         .filter(Sale.id == sale_id)
         .first()
     )
