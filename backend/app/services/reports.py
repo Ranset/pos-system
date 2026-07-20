@@ -657,7 +657,11 @@ def _build_formas_pago(db, start, end, target_date, cashier_id, payment_method):
 
 def _build_lista_ventas(db, start, end, target_date, cashier_id, payment_method):
     start_dt, end_dt = _range_dt(start, end)
-    q = db.query(Sale).filter(Sale.created_at >= start_dt, Sale.created_at <= end_dt)
+    q = (
+        db.query(Sale)
+        .options(joinedload(Sale.clip_payment))
+        .filter(Sale.created_at >= start_dt, Sale.created_at <= end_dt)
+    )
     if cashier_id:
         q = q.filter(Sale.cashier_id == cashier_id)
     if payment_method:
@@ -677,6 +681,7 @@ def _build_lista_ventas(db, start, end, target_date, cashier_id, payment_method)
             "discount": float(s.discount_amount or 0),
             "tax": float(s.tax_amount or 0),
             "total": float(s.total or 0),
+            "receipt_number": (s.clip_payment.receipt_number or "") if s.clip_payment else "",
             "status": SALE_STATUS_LABELS.get((s.status or "").lower(), s.status),
         })
 
@@ -689,6 +694,7 @@ def _build_lista_ventas(db, start, end, target_date, cashier_id, payment_method)
         {"key": "discount", "label": "Descuento", "type": "currency"},
         {"key": "tax", "label": "Impuesto", "type": "currency"},
         {"key": "total", "label": "Total", "type": "currency"},
+        {"key": "receipt_number", "label": "No. de recibo (Clip)", "type": "text"},
         {"key": "status", "label": "Estado", "type": "text"},
     ]
     return columns, rows

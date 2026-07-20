@@ -82,27 +82,34 @@ class TicketPrinter:
     def _divider(self, char="-") -> str:
         return char * self.char_width
 
-    _CARD_TYPE_LABELS = {"credit": "Crédito", "debit": "Débito"}
     _CLIP_STATUS_LABELS = {"approved": "Aprobado", "declined": "Declinado",
                            "cancelled": "Cancelado", "error": "Error", "pending": "Pendiente"}
 
     def _clip_payment_summary(self, sale: dict) -> Optional[dict]:
         """Datos ya formateados del cobro con terminal Clip (tipo de tarjeta,
-        últimos 4 dígitos, banco emisor, estado), o None si la venta no se
-        pagó con terminal (efectivo, tarjeta manual, transferencia, mixto).
-        Acepta tanto "_clip_payment" (dato en memoria del flujo en vivo del
-        POS, ver pos.py) como "clip_payment" (campo de SaleOut al recargar
-        una venta ya existente desde el backend, ej. reimpresión en Ventas)."""
+        últimos 4 dígitos, banco emisor, número de recibo, estado), o None si
+        la venta no se pagó con terminal (efectivo, tarjeta manual,
+        transferencia, mixto). Acepta tanto "_clip_payment" (dato en memoria
+        del flujo en vivo del POS, ver pos.py) como "clip_payment" (campo de
+        SaleOut al recargar una venta ya existente desde el backend, ej.
+        reimpresión en Ventas)."""
         cp = sale.get("_clip_payment") or sale.get("clip_payment")
         if not cp:
             return None
         card_type_raw = (cp.get("card_type") or "").lower()
+        if "debit" in card_type_raw:
+            card_type_label = "Débito"
+        elif "credit" in card_type_raw:
+            card_type_label = "Crédito"
+        else:
+            card_type_label = cp.get("card_type") or "No disponible"
         last4 = cp.get("last4")
         status_raw = (cp.get("status") or "").lower()
         return {
-            "card_type": self._CARD_TYPE_LABELS.get(card_type_raw, cp.get("card_type") or "No disponible"),
+            "card_type": card_type_label,
             "card_str": f"**** {last4}" if last4 else "No disponible",
             "issuer": cp.get("issuer") or "No disponible",
+            "receipt_number": cp.get("receipt_number") or "",
             "status": self._CLIP_STATUS_LABELS.get(status_raw, (cp.get("status") or "-").capitalize()),
         }
 
@@ -210,6 +217,8 @@ class TicketPrinter:
                 ptext(f"Tipo de tarjeta: {clip_summary['card_type']}\n")
                 ptext(f"Tarjeta: {clip_summary['card_str']}\n")
                 ptext(f"Banco emisor: {clip_summary['issuer']}\n")
+                if clip_summary["receipt_number"]:
+                    ptext(f"No. de recibo: {clip_summary['receipt_number']}\n")
                 ptext(f"Estado: {clip_summary['status']}\n")
 
             # ── Pie ────────────────────────────────────────────────────────
@@ -399,7 +408,7 @@ class TicketPrinter:
         n_rows = (9                          # header
                   + len(items) * 2           # products
                   + 7                        # totals (incl. comisión)
-                  + (6 if clip_summary else 0)  # detalles de terminal Clip
+                  + (7 if clip_summary else 0)  # detalles de terminal Clip
                   + 4)                       # footer
         qr_extra_h = 40 if self.qr_content else 0   # título + código QR
         ph = max(n_rows * lh + mg * 2 + 10 + qr_extra_h, 90)
@@ -513,6 +522,8 @@ class TicketPrinter:
             lr("Tipo de tarjeta:", clip_summary["card_type"], size=8, h=slh)
             lr("Tarjeta:", clip_summary["card_str"], size=8, h=slh)
             lr("Banco emisor:", clip_summary["issuer"], size=8, h=slh)
+            if clip_summary["receipt_number"]:
+                lr("No. de recibo:", clip_summary["receipt_number"], size=8, h=slh)
             lr("Estado:", clip_summary["status"], size=8, h=slh)
 
         hrule(gap_before=2, gap_after=2)
@@ -639,6 +650,8 @@ class TicketPrinter:
             print(f"Tipo de tarjeta: {clip_summary['card_type']}")
             print(f"Tarjeta: {clip_summary['card_str']}")
             print(f"Banco emisor: {clip_summary['issuer']}")
+            if clip_summary["receipt_number"]:
+                print(f"No. de recibo: {clip_summary['receipt_number']}")
             print(f"Estado: {clip_summary['status']}")
 
         print(div("="))

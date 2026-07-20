@@ -2228,6 +2228,7 @@ def pos_view(page: ft.Page, app_state: dict):
                         "card_type": result.get("card_type"),
                         "last4": result.get("last4"),
                         "issuer": result.get("issuer"),
+                        "receipt_number": result.get("receipt_number"),
                         "status": result.get("status"),
                     }
                     _finalize_and_show_success(sale, Decimal("0"), "card", clip_payment)
@@ -2408,13 +2409,18 @@ def pos_view(page: ft.Page, app_state: dict):
 
         clip_payment = last_sale.get("_clip_payment")
         if clip_payment:
-            CARD_TYPE_LABELS = {"credit": "Crédito", "debit": "Débito"}
             STATUS_LABELS = {"approved": "Aprobado", "declined": "Declinado",
                              "cancelled": "Cancelado", "error": "Error", "pending": "Pendiente"}
             card_type_raw = (clip_payment.get("card_type") or "").lower()
-            card_type_label = CARD_TYPE_LABELS.get(card_type_raw, clip_payment.get("card_type") or "No disponible")
+            if "debit" in card_type_raw:
+                card_type_label = "Débito"
+            elif "credit" in card_type_raw:
+                card_type_label = "Crédito"
+            else:
+                card_type_label = clip_payment.get("card_type") or "No disponible"
             last4 = clip_payment.get("last4")
             issuer = clip_payment.get("issuer") or "No disponible"
+            receipt_number = clip_payment.get("receipt_number")
             status_raw = (clip_payment.get("status") or "").lower()
             status_label = STATUS_LABELS.get(status_raw, (clip_payment.get("status") or "—").capitalize())
 
@@ -2423,6 +2429,8 @@ def pos_view(page: ft.Page, app_state: dict):
             ticket_row("Tipo de tarjeta:", card_type_label)
             ticket_row("Tarjeta:", f"**** {last4}" if last4 else "No disponible")
             ticket_row("Banco emisor:", issuer)
+            if receipt_number:
+                ticket_row("No. de recibo:", receipt_number)
             ticket_row("Estado:", status_label)
 
         ticket_row("", divider=True)

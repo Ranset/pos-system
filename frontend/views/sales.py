@@ -713,6 +713,50 @@ def sales_view(page: ft.Page, app_state: dict):
                 ], spacing=8),
             ))
 
+        # Sección de terminal Clip (solo si la venta se pagó con terminal)
+        clip_section = []
+        clip_payment = sale.get("clip_payment")
+        if clip_payment:
+            card_type_raw = (clip_payment.get("card_type") or "").lower()
+            if "debit" in card_type_raw:
+                card_type_label = "Débito"
+            elif "credit" in card_type_raw:
+                card_type_label = "Crédito"
+            else:
+                card_type_label = clip_payment.get("card_type") or "No disponible"
+            clip_last4 = clip_payment.get("last4")
+            clip_issuer = clip_payment.get("issuer") or "No disponible"
+            clip_receipt = clip_payment.get("receipt_number")
+            clip_status_raw = (clip_payment.get("status") or "").lower()
+            clip_status_label = {
+                "approved": "Aprobado", "declined": "Declinado", "cancelled": "Cancelado",
+                "error": "Error", "pending": "Pendiente",
+            }.get(clip_status_raw, (clip_payment.get("status") or "—").capitalize())
+
+            def clip_row(label, value):
+                return ft.Row([
+                    ft.Text(label, size=12, color=ft.colors.WHITE70),
+                    ft.Text(value, size=12, color=ft.colors.WHITE),
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+            clip_section.append(ft.Divider(color=ft.colors.WHITE12))
+            clip_section.append(ft.Container(
+                bgcolor=PRIMARY + "11", border_radius=6,
+                border=ft.border.all(1, PRIMARY + "44"),
+                padding=ft.padding.all(8),
+                content=ft.Column(spacing=4, controls=[
+                    ft.Row([
+                        ft.Icon(ft.icons.POINT_OF_SALE, color=PRIMARY_LT, size=16),
+                        ft.Text("Terminal Clip", size=12, color=PRIMARY_LT, weight=ft.FontWeight.BOLD),
+                    ], spacing=6),
+                    clip_row("Tipo de tarjeta:", card_type_label),
+                    clip_row("Tarjeta:", f"**** {clip_last4}" if clip_last4 else "No disponible"),
+                    clip_row("Banco emisor:", clip_issuer),
+                    clip_row("No. de recibo:", clip_receipt) if clip_receipt else ft.Container(),
+                    clip_row("Estado:", clip_status_label),
+                ]),
+            ))
+
         def do_reprint(_):
             try:
                 from services.printer import TicketPrinter
@@ -806,6 +850,7 @@ def sales_view(page: ft.Page, app_state: dict):
                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Text(f"Notas: {sale.get('notes','—')}", size=11,
                             color=ft.colors.WHITE54) if sale.get("notes") and status != "cancelled" else ft.Container(),
+                    *clip_section,
                     *cancel_section,
                     *returns_section,
                 ]),

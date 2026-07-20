@@ -192,8 +192,18 @@ class ClipPinpadService(PaymentTerminalService):
         payment.transaction_id = detail.get("transaction_id") or detail.get("id")
         payment.merchant_id = detail.get("merchant_id")
         payment.entry_mode = detail.get("entry_mode")
+        payment.receipt_number = detail.get("receipt_no") or payment.receipt_number
         card = (detail.get("payment_method") or {}).get("card") or {}
-        payment.card_type = (detail.get("payment_method") or {}).get("type") or payment.card_type
+        # Clip devuelve "debit_card"/"credit_card" (no solo "debit"/"credit") —
+        # se normaliza aquí, una sola vez, para que todo consumidor downstream
+        # (ticket, vistas, reportes) reciba siempre "debit" o "credit" limpio.
+        raw_type = ((detail.get("payment_method") or {}).get("type") or "").lower()
+        if "debit" in raw_type:
+            payment.card_type = "debit"
+        elif "credit" in raw_type:
+            payment.card_type = "credit"
+        elif raw_type:
+            payment.card_type = raw_type
         payment.last4 = card.get("last_digits") or payment.last4
         payment.issuer = card.get("issuer") or payment.issuer
         if detail.get("approved_at"):

@@ -332,6 +332,7 @@ class ClipPaymentTicketInfo(BaseModel):
     card_type: Optional[str] = None
     last4: Optional[str] = None
     issuer: Optional[str] = None
+    receipt_number: Optional[str] = None
     status: str
 
     model_config = {"from_attributes": True}
@@ -414,6 +415,7 @@ class ClipPaymentOut(BaseModel):
     card_type: Optional[str] = None
     last4: Optional[str] = None
     issuer: Optional[str] = None
+    receipt_number: Optional[str] = None
     created_at: datetime
     approved_at: Optional[datetime] = None
     sale: Optional[SaleOut] = None
